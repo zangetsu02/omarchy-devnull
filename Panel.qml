@@ -1,7 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -16,8 +13,6 @@ Panel {
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
-  readonly property color dim: Color.muted
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property int bodyLines: setting("bodyLines", 2)
   readonly property var badge: Model.badgeFor(feed.unreadCount, feed.broken)
@@ -50,9 +45,9 @@ Panel {
     root.close()
     if (!bar || !bar.shell) return
     var payload = JSON.stringify({ commit: commitId || "" })
-    bar.shell.hide("zangetsu.devnull")
+    bar.shell.hide(root.moduleName)
     Qt.callLater(function () {
-      if (root.bar && root.bar.shell) root.bar.shell.summon("zangetsu.devnull", payload)
+      if (root.bar && root.bar.shell) root.bar.shell.summon(root.moduleName, payload)
     })
   }
 
@@ -72,11 +67,10 @@ Panel {
           crossed: feed.broken
         }
 
-        Text {
+        Mono {
           visible: root.badge.text !== "" && root.badge.state === "unread"
           text: root.badge.text
           color: root.urgent
-          font.family: root.fontFamily
           font.pixelSize: Style.space(8)
           anchors.left: glyph.right
           anchors.verticalCenter: glyph.verticalCenter
@@ -118,31 +112,27 @@ Panel {
         Item {
           width: column.width
           height: title.implicitHeight
-          Text {
+          Mono {
             id: title
             text: "/dev/null"
             color: root.foreground
-            font.family: root.fontFamily
             font.pixelSize: Style.font.subtitle
             font.bold: true
           }
-          Text {
+          Mono {
             anchors.right: parent.right
             anchors.baseline: title.baseline
             text: feed.username !== "" ? "@" + feed.username : ""
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            color: Color.muted
           }
         }
 
         // --- Who reached you --------------------------------------------------
 
-        Text {
+        Mono {
           visible: feed.notifications.length > 0
           text: "FOR YOU"
-          color: root.dim
-          font.family: root.fontFamily
+          color: Color.muted
           font.pixelSize: Style.font.caption
           font.letterSpacing: 1
           topPadding: Style.space(4)
@@ -150,22 +140,19 @@ Panel {
 
         Repeater {
           model: feed.notifications.slice(0, root.shownNotifications)
-          Text {
+          Mono {
             width: column.width
             text: Model.summaryFor(modelData)
-            color: modelData.read_at ? root.dim : root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            color: modelData.read_at ? Color.muted : root.foreground
             elide: Text.ElideRight
           }
         }
 
         // --- The last few commits ---------------------------------------------
 
-        Text {
+        Mono {
           text: "LATEST"
-          color: root.dim
-          font.family: root.fontFamily
+          color: Color.muted
           font.pixelSize: Style.font.caption
           font.letterSpacing: 1
           topPadding: Style.space(4)
@@ -178,20 +165,16 @@ Panel {
             width: column.width
             row: Model.rowFor(modelData)
             bodyLines: root.bodyLines
-            fontFamily: root.fontFamily
             foreground: root.foreground
-            dim: root.dim
             now: root.now
             onClicked: root.openFull(row.id)
           }
         }
 
-        Text {
+        Mono {
           visible: feed.lastError !== ""
           text: feed.lastError
           color: root.urgent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
           width: column.width
           wrapMode: Text.WordWrap
         }
@@ -201,11 +184,10 @@ Panel {
         Item {
           width: column.width
           height: openButton.implicitHeight
-          Text {
+          Mono {
             anchors.verticalCenter: parent.verticalCenter
             text: feed.updatedAt !== "" ? "updated " + Model.ageFor(feed.updatedAt, root.now) : ""
-            color: root.dim
-            font.family: root.fontFamily
+            color: Color.muted
             font.pixelSize: Style.font.caption
           }
           Button {
@@ -215,7 +197,6 @@ Panel {
             iconText: "↗"
             bordered: true
             foreground: root.foreground
-            fontFamily: root.fontFamily
             tooltipText: "Open the full view (o)"
             onClicked: root.openFull("")
           }

@@ -4,22 +4,19 @@ import qs.Ui
 import "Model.js" as Model
 
 // One commit in its own bordered box: who, hash, age, the body, the counts.
-// The popup and the full view draw the same card; only `bodyLines` differs.
+// Used by the bar popup; the full view draws commits as LogRow instead.
 BorderSurface {
   id: root
 
   required property var row
-  property bool selected: false
   property int bodyLines: 2
-  property string fontFamily: Style.font.family
   property color foreground: Color.foreground
-  property color dim: Color.muted
   // Bumped by the owner every minute so the age keeps up without a refetch.
   property double now: Date.now()
 
   signal clicked()
 
-  readonly property bool lit: selected || hover.hovered
+  readonly property bool lit: hover.hovered
   readonly property real pad: Style.space(8)
 
   implicitHeight: content.implicitHeight + pad * 2
@@ -39,44 +36,35 @@ BorderSurface {
 
     Row {
       spacing: Style.space(8)
-      Text {
+      Mono {
         text: root.row.handle
         color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
         font.bold: true
       }
-      Text {
+      Mono {
         text: root.row.hash
         color: Color.accent
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
       }
-      Text {
+      Mono {
         text: Model.ageFor(root.row.created, root.now) + (root.row.pending ? "  · held" : "")
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
+        color: Color.muted
       }
     }
 
-    Text {
+    Mono {
       width: parent.width
       text: root.row.body !== "" ? root.row.body : "(empty commit)"
-      color: root.row.body !== "" ? root.foreground : root.dim
+      color: root.row.body !== "" ? root.foreground : Color.muted
       font.italic: root.row.body === ""
-      font.family: root.fontFamily
       font.pixelSize: Style.font.body
       wrapMode: Text.Wrap
       maximumLineCount: root.bodyLines
       elide: Text.ElideRight
     }
 
-    Text {
+    Mono {
       text: (root.row.starred ? "★ " : "☆ ") + root.row.stars + "    ↩ " + root.row.replies
-      color: root.row.starred ? Color.accent : root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
+      color: root.row.starred ? Color.accent : Color.muted
     }
   }
 }

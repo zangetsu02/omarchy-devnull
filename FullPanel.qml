@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
-import Quickshell.Io
 import qs.Commons
-import qs.Ui
 import "Model.js" as Model
 
-// The full view behind Open: dev-null's home as a terminal would draw it.
-// Sections on the left, the log as a commit graph in the middle, who you are
-// and the keys on the right. Colours and font are the Omarchy theme's, the
-// author lanes included, so it follows `omarchy theme set`.
+// The full view behind Open: dev-null in the shell, drawn like a terminal.
+// Sections on the left (Log, Notifications, Starred, Profile), the page in the
+// middle, who you are and the keys on the right, a status line at the bottom.
+// Background, text and font are the Omarchy theme's; the author lanes and the
+// action blue are dev-null's own.
 //
-// The shell mounts this only while it is summoned, so its own Service polls
-// only while it is on screen.
+// Every row and page talks only to this file; it is the one that knows the
+// service. The shell mounts it only while it is summoned, so polling stops
+// when it is closed.
 Item {
   id: root
 
@@ -22,56 +22,47 @@ Item {
 
   readonly property string pluginId: manifest && manifest.id ? String(manifest.id) : "zangetsu.devnull"
 
-  // --- Look: everything comes from the theme ---------------------------------
+  // --- Look ---------------------------------------------------------------------
 
-  readonly property color foreground: Color.foreground
-  readonly property color dim: Color.muted
-  readonly property color railColor: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
-  readonly property string fontFamily: Style.font.family
-  property var lanes: []
+  readonly property var scheme: Model.paletteFor(Color.background.hslLightness)
+  readonly property color primary: scheme.primary
+  readonly property color destructive: scheme.destructive
+  readonly property color railColor: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.16)
   property double now: Date.now()
 
-  function laneColor(index) { return lanes[index] || Color.accent }
+  function laneColor(index) { return scheme.lanes[index] || scheme.lanes[0] }
   function esc(text) {
     return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   }
-  function dimmed(text) { return "<font color='" + dim + "'>" + esc(text) + "</font>" }
+  function dimmed(text) { return "<font color='" + Color.muted + "'>" + esc(text) + "</font>" }
 
-  // The lanes are the theme's orange, green, magenta, cyan, red and yellow.
-  // Read again whenever the shell's own colours change, i.e. on a theme switch.
-  FileView {
-    id: themeColors
-    path: Color.currentThemePath + "/colors.toml"
-    printErrors: false
-    onLoaded: root.lanes = Model.lanesFrom(text(), Color.accent)
-  }
-  Connections {
-    target: Color
-    function onAccentChanged() { themeColors.reload() }
-    function onBackgroundChanged() { themeColors.reload() }
-  }
+  function noticeColor(type) { return Model.noticeTint(type, scheme) || Color.muted }
 
   // --- State --------------------------------------------------------------------
 
-  // "log" or "notifications".
+  // "log", "notifications", "starred" or "profile".
   property string page: "log"
-  property string selectedId: ""
+  property string profileName: ""
+  property var history: []
   property string replyingTo: ""
   // Per commit id, not per row: the feed is replaced on every refresh.
   property var drafts: ({})
   property string composerText: ""
   property var quoting: null
   property string status: ""
+  property bool statusFailed: false
   property bool awaitingG: false
-  // The composer lives in the list header; this is how keys reach it.
   property var composerField: null
 
-  readonly property int selectedIndex: {
-    for (var i = 0; i < feed.commits.length; i++) if (feed.commits[i].id === selectedId) return i
-    return feed.commits.length > 0 ? 0 : -1
-  }
-  readonly property var selectedCommit: selectedIndex >= 0 ? feed.commits[selectedIndex] : null
+  readonly property var me: feed.me
+  readonly property string myUsername: feed.me.username || feed.username
   readonly property int unread: feed.notifications.filter(function (n) { return !n.read_at }).length
+  // The list the keys act on, on the page in front.
+  readonly property var activeList: page === "log" ? logList
+    : page === "starred" ? starredList
+    : page === "profile" && profilePage.tab === "commits" ? profilePage.commitList
+    : null
+  readonly property var selectedCommit: activeList ? activeList.selectedCommit : null
 
   Timer { interval: 60000; repeat: true; running: root.opened; onTriggered: root.now = Date.now() }
   Timer { id: statusClear; interval: 6000; onTriggered: root.status = "" }
@@ -85,8 +76,7 @@ Item {
       root.drafts = Model.clearDraft(root.drafts, id)
       if (root.replyingTo === id) root.replyingTo = ""
     }
-    onReplyStatusChanged: root.say(replyStatus)
-    onCommitStatusChanged: root.say(commitStatus)
+    onTold: function (text, failed) { root.say(text, failed) }
     onCommitDone: function (answer) {
       if (answer.error) return
       root.composerText = ""
@@ -94,10 +84,12 @@ Item {
     }
   }
 
-  // --- What the rows and keys call (LogRow only talks to these) ---------------
+  Pager { id: starred; service: feed }
+
+  // --- What rows and pages call ---------------------------------------------------
 
   function threadFor(id) { return feed.threads[id] || null }
-  function toggleStar(id) { feed.toggleStar(id) }
+  function toggleStar(row) { feed.toggleStar(row.id, row.starred) }
   function toggleThread(id) { feed.toggleThread(id) }
   function loadMoreReplies(id, cursor) { feed.loadThread(id, cursor) }
   function draftFor(id) { return Model.draftFor(drafts, id) }
@@ -111,34 +103,52 @@ Item {
   }
   function startQuote(commit) {
     quoting = commit
+    goTo("log", "")
     focusComposer()
   }
   function focusComposer() { if (composerField) composerField.forceActiveFocus() }
-  function openOnSite(url) { if (url) Quickshell.execDetached(["xdg-open", url]) }
-  function copyLink(row) {
-    Quickshell.execDetached(["wl-copy", row.url])
-    say("Copied link to " + row.hash)
+  function leaveComposer() {
+    quoting = null
+    scope.forceActiveFocus()
   }
-  function say(text) {
-    status = text
-    if (text) statusClear.restart()
-  }
-
   function postComposer() {
     if (composerText.trim() === "" || Model.charsLeft(composerText) < 0) return
     feed.postCommit(composerText, quoting ? quoting.id : "")
   }
-
-  function showPage(name) {
-    page = name
-    scope.forceActiveFocus()
+  function openOnSite(url) {
+    var safe = Model.webUrl(url)
+    if (safe) Quickshell.execDetached(["xdg-open", safe])
+  }
+  function copyLink(row) {
+    Quickshell.execDetached(["wl-copy", row.url])
+    say("Copied link to " + row.hash, false)
+  }
+  function openProfile(username) { if (username) goTo("profile", username) }
+  function say(text, failed) {
+    status = text
+    statusFailed = failed
+    if (text) statusClear.restart()
   }
 
-  function move(step) {
-    if (feed.commits.length === 0) return
-    var next = Math.max(0, Math.min(feed.commits.length - 1, selectedIndex + step))
-    selectedId = feed.commits[next].id
-    list.positionViewAtIndex(next, ListView.Contain)
+  // --- Navigation: a page, and the way back ----------------------------------------
+
+  function goTo(name, username) {
+    if (name === page && (name !== "profile" || username === profileName)) return
+    history = history.concat([{ page: page, username: profileName }])
+    show(name, username)
+  }
+  function back() {
+    if (history.length === 0) return
+    var last = history[history.length - 1]
+    history = history.slice(0, -1)
+    show(last.page, last.username)
+  }
+  function show(name, username) {
+    page = name
+    if (name === "profile") profileName = username || myUsername
+    if (name === "starred") starred.args = ["starred"]
+    replyingTo = ""
+    scope.forceActiveFocus()
   }
 
   // --- Host --------------------------------------------------------------------
@@ -148,12 +158,13 @@ Item {
     try { payload = JSON.parse(String(payloadJson || "{}")) || ({}) } catch (e) {}
     if (shell && shell.bar && typeof shell.bar.hideBarWidget === "function")
       shell.bar.hideBarWidget(pluginId)
-    selectedId = String(payload.commit || "")
-    page = "log"
+    history = []
+    show("log", "")
+    logList.selectedId = String(payload.commit || "")
     now = Date.now()
     opened = true
     feed.openPanel()
-    feed.dispatch("profile")
+    feed.dispatch("me")
     Qt.callLater(function () { scope.forceActiveFocus() })
   }
 
@@ -170,40 +181,47 @@ Item {
 
   // --- Keys ---------------------------------------------------------------------
 
-  readonly property var keyActions: ({
-    "j": function () { root.move(1) },
-    "k": function () { root.move(-1) },
-    "1": function () { feed.switchLog("following") },
-    "2": function () { feed.switchLog("latest") },
-    "3": function () { feed.switchLog("trending") },
-    "s": function () { if (root.selectedCommit) root.toggleStar(root.selectedCommit.id) },
-    "r": function () { if (root.selectedCommit) root.toggleReply(root.selectedCommit.id) },
-    "q": function () { if (root.selectedCommit) root.startQuote(root.selectedCommit) },
-    "o": function () { if (root.selectedCommit) root.toggleThread(root.selectedCommit.id) },
-    "y": function () { if (root.selectedCommit) root.copyLink(Model.rowFor(root.selectedCommit)) },
-    "c": function () { root.showPage("log"); root.focusComposer() },
-    "R": function () { feed.refresh() },
-    "\r": function () { if (root.selectedCommit) root.openOnSite(root.selectedCommit.html_url) }
+  // Keys on the selected commit, wherever the commit list is.
+  readonly property var commitKeys: ({
+    "j": function (list) { list.move(1) },
+    "k": function (list) { list.move(-1) },
+    "s": function (list, c) { root.toggleStar(Model.rowFor(c)) },
+    "r": function (list, c) { root.toggleReply(c.id) },
+    "q": function (list, c) { root.startQuote(c) },
+    "o": function (list, c) { root.toggleThread(c.id) },
+    "y": function (list, c) { root.copyLink(Model.rowFor(c)) },
+    "p": function (list, c) { root.openProfile(Model.rowFor(c).username) },
+    "\r": function (list, c) { root.openOnSite(c.html_url) }
+  })
+  readonly property var pageKeys: ({
+    "1": function () { root.goTo("log", ""); feed.switchLog("following") },
+    "2": function () { root.goTo("log", ""); feed.switchLog("latest") },
+    "3": function () { root.goTo("log", ""); feed.switchLog("trending") },
+    "c": function () { root.goTo("log", ""); root.focusComposer() },
+    "R": function () { feed.refresh() }
   })
   // `g` then a letter goes somewhere, as on the site.
-  readonly property var goActions: ({
-    "l": function () { root.showPage("log") },
-    "n": function () { root.showPage("notifications") }
+  readonly property var goKeys: ({
+    "l": function () { root.goTo("log", "") },
+    "n": function () { root.goTo("notifications", "") },
+    "s": function () { root.goTo("starred", "") },
+    "p": function () { root.goTo("profile", root.myUsername) }
   })
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) { dismiss(); return true }
-    if (event.key === Qt.Key_Down) { move(1); return true }
-    if (event.key === Qt.Key_Up) { move(-1); return true }
-    var key = event.text
+    if (event.key === Qt.Key_Backspace) { back(); return true }
+    var key = event.key === Qt.Key_Down ? "j" : event.key === Qt.Key_Up ? "k" : event.text
     if (awaitingG) {
       awaitingG = false
-      if (goActions[key]) { goActions[key](); return true }
+      if (goKeys[key]) { goKeys[key](); return true }
     }
     if (key === "g") { awaitingG = true; return true }
-    if (page !== "log" && key !== "c") return false
-    if (!keyActions[key]) return false
-    keyActions[key]()
+    if (pageKeys[key]) { pageKeys[key](); return true }
+    if (!commitKeys[key] || !activeList) return false
+    var commit = activeList.selectedCommit
+    if (!commit && key !== "j" && key !== "k") return false
+    commitKeys[key](activeList, commit)
     return true
   }
 
@@ -214,9 +232,9 @@ Item {
     visible: root.opened
     title: "dev-null"
     color: Color.background
-    implicitWidth: 1180
-    implicitHeight: 760
-    minimumSize: Qt.size(720, 480)
+    implicitWidth: 1220
+    implicitHeight: 800
+    minimumSize: Qt.size(760, 500)
 
     onVisibleChanged: if (!visible && root.opened) root.dismiss()
 
@@ -231,141 +249,151 @@ Item {
       Column {
         id: nav
         anchors { left: parent.left; top: parent.top; bottom: statusBar.top }
-        width: Style.space(190)
-        topPadding: Style.space(16)
-        spacing: Style.space(2)
+        width: Style.space(210)
+        topPadding: Style.space(20)
+        leftPadding: Style.space(10)
+        rightPadding: Style.space(10)
+        spacing: Style.space(3)
 
-        Mono {
-          x: Style.space(16)
-          text: "/dev/null"
-          font.pixelSize: Style.font.subtitle
-          font.bold: true
+        Row {
+          leftPadding: Style.space(10)
+          spacing: Style.space(2)
+          Mono { text: "/dev"; font.pixelSize: Style.font.subtitle + 6; font.bold: true }
+          Mono { text: "/"; color: root.laneColor(0); font.pixelSize: Style.font.subtitle + 6; font.bold: true }
+          Mono { text: "null"; font.pixelSize: Style.font.subtitle + 6; font.bold: true }
         }
         Mono {
-          x: Style.space(16)
-          bottomPadding: Style.space(14)
+          leftPadding: Style.space(10)
+          bottomPadding: Style.space(18)
           text: "a social network for devs"
-          color: root.dim
-          font.pixelSize: Style.font.caption
+          color: Color.muted
         }
-        NavItem { label: "Log"; key: "g l"; target: "log" }
-        NavItem { label: "Notifications"; key: "g n"; target: "notifications"; count: root.unread }
+        NavItem { icon: ""; label: "Log"; keys: "g l"; target: "log" }
+        NavItem { icon: ""; label: "Notifications"; keys: "g n"; target: "notifications"; count: root.unread }
+        NavItem { icon: ""; label: "Starred"; keys: "g s"; target: "starred" }
+        NavItem { icon: ""; label: "Profile"; keys: "g p"; target: "profile" }
       }
 
       VLine { anchors.left: nav.right }
 
-      // --- The log ----------------------------------------------------------------
-
       Item {
         id: middle
-        anchors { left: nav.right; right: aside.visible ? aside.left : parent.right; top: parent.top; bottom: statusBar.top }
+        anchors { left: nav.right; leftMargin: 1; right: aside.visible ? aside.left : parent.right; top: parent.top; bottom: statusBar.top }
 
-        Row {
-          id: tabs
+        // --- Log ------------------------------------------------------------------
+
+        Item {
+          anchors.fill: parent
           visible: root.page === "log"
-          width: parent.width
-          height: visible ? Style.space(36) : 0
-          Repeater {
-            model: [
-              { log: "following", label: "following", key: "1" },
-              { log: "latest", label: "latest", key: "2" },
-              { log: "trending", label: "trending", key: "3" }
-            ]
-            Item {
-              width: tabs.width / 3
-              height: tabs.height
-              readonly property bool current: feed.log === modelData.log
-              Mono {
-                anchors.centerIn: parent
-                textFormat: Text.StyledText
-                text: root.dimmed("[" + modelData.key + "] ") + modelData.label
-                color: parent.current ? root.foreground : root.dim
-                font.pixelSize: Style.font.body
-                font.bold: parent.current
-              }
-              Rectangle {
-                visible: parent.current
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 2
-                color: Color.accent
-              }
-              TapHandler { onTapped: feed.switchLog(modelData.log) }
-            }
-          }
-        }
-        HLine { anchors.top: tabs.bottom; visible: tabs.visible }
 
-        ListView {
-          id: list
-          visible: root.page === "log"
-          anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom; topMargin: 1 }
-          clip: true
-          boundsBehavior: Flickable.StopAtBounds
-          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-          model: feed.commits
-
-          header: Composer {}
-
-          delegate: LogRow {
-            required property int index
-            required property var modelData
-            width: list.width
-            commit: modelData
-            view: root
-            selected: index === root.selectedIndex
-            laneAbove: index > 0 ? root.laneColor(Model.laneOf(feed.commits[index - 1])) : root.railColor
-            TapHandler { onTapped: { root.selectedId = modelData.id; scope.forceActiveFocus() } }
-          }
-
-          footer: Item {
-            width: list.width
+          Row {
+            id: tabs
+            width: parent.width
             height: Style.space(44)
-            Mono {
-              anchors.centerIn: parent
-              text: feed.loading ? "loading…"
-                : feed.lastError !== "" ? "fatal: " + feed.lastError
-                : feed.nextCursor !== "" ? "older…"
-                : feed.commits.length > 0 ? "That's the root commit. There's nothing before it."
-                : "fatal: your " + feed.log + " log is empty"
-              color: feed.lastError !== "" ? Color.urgent : root.dim
+            Repeater {
+              model: [
+                { log: "following", key: "1" },
+                { log: "latest", key: "2" },
+                { log: "trending", key: "3" }
+              ]
+              Item {
+                id: tab
+                required property var modelData
+                readonly property bool current: feed.log === modelData.log
+                width: tabs.width / 3
+                height: tabs.height
+                Row {
+                  anchors.centerIn: parent
+                  spacing: Style.space(6)
+                  Mono { text: tab.modelData.key; color: Color.muted; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+                  Mono {
+                    text: tab.modelData.log
+                    color: tab.current ? Color.foreground : Color.muted
+                    font.pixelSize: Style.font.body
+                    font.bold: tab.current
+                  }
+                }
+                Rectangle {
+                  visible: tab.current
+                  anchors.bottom: parent.bottom
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: Style.space(80)
+                  height: 3
+                  radius: 1.5
+                  color: root.primary
+                }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: feed.switchLog(tab.modelData.log) }
+              }
             }
-            TapHandler { onTapped: feed.loadMore() }
+          }
+          HLine { anchors.top: tabs.bottom }
+
+          CommitList {
+            id: logList
+            anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom; topMargin: 1 }
+            view: root
+            commits: feed.commits
+            hasMore: feed.nextCursor !== ""
+            endLine: Model.listEnd({ loading: feed.loading, error: feed.lastError, more: hasMore,
+                                     count: feed.commits.length, empty: "fatal: your " + feed.log + " log is empty" })
+            onLoadMore: feed.loadMore()
+            header: Composer {
+              view: root
+              Component.onCompleted: root.composerField = field
+            }
           }
         }
 
-        // --- What happened to you ---------------------------------------------------
+        // --- Notifications ----------------------------------------------------------
 
         ListView {
           id: notices
+          anchors.fill: parent
           visible: root.page === "notifications"
-          anchors { fill: parent; margins: Style.space(16) }
           clip: true
-          spacing: Style.space(8)
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
           model: feed.notifications
-          header: Mono {
-            bottomPadding: Style.space(10)
-            text: "Notifications"
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-          }
-          delegate: Mono {
+          header: PageTitle { text: "Notifications" }
+          delegate: NoticeRow {
             required property var modelData
             width: notices.width
-            text: Model.summaryFor(modelData)
-            color: modelData.read_at ? root.dim : root.foreground
-            font.pixelSize: Style.font.body
-            wrapMode: Text.Wrap
-            maximumLineCount: 3
-            elide: Text.ElideRight
+            notification: modelData
+            view: root
           }
-          footer: Mono {
-            topPadding: Style.space(12)
-            text: feed.notifications.length > 0
-              ? "That's the oldest notification. There's nothing before it."
-              : "$ cat /dev/notifications  # nothing yet"
-            color: root.dim
+          footer: EndLine {
+            text: Model.listEnd({ count: feed.notifications.length,
+                                  end: "That's the oldest notification. There's nothing before it.",
+                                  empty: "$ cat /dev/notifications  # nothing yet" })
           }
+        }
+
+        // --- Starred -------------------------------------------------------------
+
+        CommitList {
+          id: starredList
+          anchors.fill: parent
+          visible: root.page === "starred"
+          view: root
+          commits: starred.items
+          hasMore: starred.nextCursor !== ""
+          endLine: Model.listEnd({ loading: starred.loading, error: starred.error, more: hasMore,
+                                   count: starred.items.length, end: "That's every star you gave.",
+                                   empty: "fatal: no stars yet. Press s on a commit you like." })
+          onLoadMore: starred.more()
+          header: PageTitle { text: "Starred" }
+        }
+
+        // --- Profile -------------------------------------------------------------
+
+        ProfilePage {
+          id: profilePage
+          anchors.fill: parent
+          visible: root.page === "profile"
+          view: root
+          service: feed
+          username: root.profileName
         }
       }
 
@@ -373,40 +401,47 @@ Item {
 
       Column {
         id: aside
-        visible: window.width >= 1040
+        visible: window.width >= 1080
         anchors { right: parent.right; top: parent.top; bottom: statusBar.top }
-        width: Style.space(270)
-        padding: Style.space(18)
-        spacing: Style.space(8)
+        width: Style.space(280)
+        padding: Style.space(20)
+        spacing: Style.space(10)
 
-        Mono {
-          text: root.esc(feed.me.name || feed.username || "")
-          font.pixelSize: Style.font.subtitle
-          font.bold: true
+        Row {
+          spacing: Style.space(12)
+          Avatar {
+            size: Style.space(44)
+            ring: root.laneColor(root.me.lane || 0)
+            source: root.me.avatar_url || ""
+            name: root.me.name || root.myUsername
+          }
+          Column {
+            anchors.verticalCenter: parent.verticalCenter
+            Mono { text: root.me.name || root.myUsername; font.pixelSize: Style.font.body; font.bold: true }
+            Mono { text: "@" + root.myUsername; color: Color.muted }
+          }
+          TapHandler { onTapped: root.goTo("profile", root.myUsername) }
         }
         Mono {
           textFormat: Text.StyledText
-          text: "<font color='" + root.laneColor(feed.me.lane || 0) + "'>●</font> " + root.dimmed("@" + (feed.me.username || feed.username))
-        }
-        Mono {
-          bottomPadding: Style.space(8)
-          textFormat: Text.StyledText
-          text: (feed.me.commits_count || 0) + root.dimmed(" commits  ")
-            + (feed.me.following_count || 0) + root.dimmed(" following  ")
-            + (feed.me.followers_count || 0) + root.dimmed(" followers")
+          text: "<b>" + (root.me.commits_count || 0) + "</b>" + root.dimmed(" commits   ")
+            + "<b>" + (root.me.following_count || 0) + "</b>" + root.dimmed(" following   ")
+            + "<b>" + (root.me.followers_count || 0) + "</b>" + root.dimmed(" followers")
         }
         HLine { width: aside.width - aside.padding * 2 }
-        Mono { topPadding: Style.space(6); text: "keys"; font.bold: true }
+        Mono { topPadding: Style.space(4); text: "Keys"; font.pixelSize: Style.font.body; font.bold: true }
         Repeater {
           model: [
-            ["j k", "move between commits"], ["1 2 3", "following · latest · trending"],
-            ["o", "show or hide replies"], ["s", "star"], ["r", "reply"], ["q", "quote"],
-            ["c", "new commit"], ["y", "copy link"], ["enter", "open on the site"],
-            ["g l  g n", "log · notifications"], ["R", "refresh"], ["esc", "close"]
+            ["j k", "move"], ["1 2 3", "following · latest · trending"], ["o", "replies"],
+            ["s", "star"], ["r", "reply"], ["q", "quote"], ["c", "new commit"], ["p", "author's profile"],
+            ["y", "copy link"], ["enter", "open on the site"], ["g l n s p", "log · notif. · starred · you"],
+            ["⌫", "back"], ["R", "refresh"], ["esc", "close"]
           ]
           Row {
-            Mono { width: Style.space(76); text: modelData[0]; font.bold: true }
-            Mono { width: aside.width - aside.padding * 2 - Style.space(76); text: modelData[1]; color: root.dim; elide: Text.ElideRight }
+            required property var modelData
+            spacing: Style.space(8)
+            KeyCap { text: modelData[0] }
+            Mono { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: Color.muted }
           }
         }
       }
@@ -418,34 +453,30 @@ Item {
       Item {
         id: statusBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: Style.space(26)
+        height: Style.space(28)
         HLine { anchors.top: parent.top }
         Mono {
-          x: Style.space(12)
+          x: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - updated.implicitWidth - Style.space(36)
+          width: parent.width - where.implicitWidth - Style.space(40)
           elide: Text.ElideRight
           text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
+          color: root.statusFailed ? root.destructive : Color.foreground
         }
         Mono {
-          id: updated
+          id: where
           anchors.right: parent.right
-          anchors.rightMargin: Style.space(12)
+          anchors.rightMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
-          text: feed.log + (feed.updatedAt !== "" ? " · updated " + Model.ageFor(feed.updatedAt, root.now) : "")
-          color: root.dim
+          textFormat: Text.StyledText
+          text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page) + "</font>"
+            + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
         }
       }
     }
   }
 
   // --- Building blocks ------------------------------------------------------------
-
-  component Mono: Text {
-    color: root.foreground
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.bodySmall
-  }
 
   component HLine: Rectangle {
     width: parent ? parent.width : 0
@@ -460,88 +491,73 @@ Item {
     color: root.railColor
   }
 
+  component PageTitle: Item {
+    property alias text: title.text
+    width: ListView.view ? ListView.view.width : 0
+    height: Style.space(56)
+    Mono { id: title; x: Style.space(20); anchors.verticalCenter: parent.verticalCenter; font.pixelSize: Style.font.subtitle + 2; font.bold: true }
+    HLine { anchors.bottom: parent.bottom }
+  }
+
+  component EndLine: Item {
+    property alias text: line.text
+    width: ListView.view ? ListView.view.width : 0
+    height: Style.space(52)
+    Mono { id: line; anchors.centerIn: parent; color: Color.muted }
+  }
+
+  component KeyCap: Rectangle {
+    property alias text: cap.text
+    width: Math.max(Style.space(64), cap.implicitWidth + Style.space(10))
+    height: cap.implicitHeight + Style.space(4)
+    radius: Style.space(4)
+    color: "transparent"
+    border.width: 1
+    border.color: root.railColor
+    Mono { id: cap; anchors.centerIn: parent; font.pixelSize: Style.font.caption }
+  }
+
   component NavItem: Rectangle {
     id: item
+    property string icon
     property string label
-    property string key
+    property string keys
     property string target
     property int count: 0
-    readonly property bool current: root.page === target
-    width: nav.width
-    height: Style.space(30)
-    color: current ? Style.selectedFillFor(root.foreground, Color.accent) : "transparent"
-    Rectangle { visible: item.current; width: 2; height: parent.height; color: Color.accent }
-    Mono {
-      x: Style.space(16)
+    readonly property bool current: root.page === target && (target !== "profile" || root.profileName === root.myUsername)
+    width: nav.width - nav.leftPadding - nav.rightPadding
+    height: Style.space(38)
+    radius: Style.space(8)
+    color: current ? Qt.rgba(root.primary.r, root.primary.g, root.primary.b, 0.14)
+      : hover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06) : "transparent"
+    Row {
+      x: Style.space(12)
       anchors.verticalCenter: parent.verticalCenter
-      text: item.label + (item.count > 0 ? "  " + item.count : "")
-      color: item.current ? root.foreground : root.dim
-      font.pixelSize: Style.font.body
+      spacing: Style.space(12)
+      Mono { text: item.icon; color: item.current ? root.primary : Color.muted; font.pixelSize: Style.font.body + 2; anchors.verticalCenter: parent.verticalCenter }
+      Mono { text: item.label; color: item.current ? root.primary : Color.foreground; font.pixelSize: Style.font.body; font.bold: item.current }
+    }
+    Rectangle {
+      visible: item.count > 0
+      anchors.right: keyText.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Math.max(height, badge.implicitWidth + Style.space(8))
+      height: badge.implicitHeight + Style.space(2)
+      radius: height / 2
+      color: root.primary
+      Mono { id: badge; anchors.centerIn: parent; text: item.count; color: Color.background; font.pixelSize: Style.font.caption; font.bold: true }
     }
     Mono {
+      id: keyText
       anchors.right: parent.right
-      anchors.rightMargin: Style.space(12)
+      anchors.rightMargin: Style.space(10)
       anchors.verticalCenter: parent.verticalCenter
-      text: item.key
-      color: root.dim
+      text: item.keys
+      color: Color.muted
       font.pixelSize: Style.font.caption
     }
-    TapHandler { onTapped: root.showPage(item.target) }
+    HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: root.goTo(item.target, item.target === "profile" ? root.myUsername : "") }
   }
-
-  // The staged commit at the top of the log: a hollow node, then the field.
-  component Composer: Item {
-    width: list.width
-    height: field.height + hint.height + Style.space(24)
-
-    Rectangle {
-      x: Style.space(15) - width / 2
-      y: Style.space(14)
-      width: Style.space(10)
-      height: width
-      radius: width / 2
-      color: root.composerText !== "" ? root.laneColor(feed.me.lane || 0) : Color.background
-      border.width: 2
-      border.color: root.laneColor(feed.me.lane || 0)
-    }
-
-    TextArea {
-      id: field
-      x: Style.space(30)
-      y: Style.space(8)
-      width: parent.width - x - Style.space(12)
-      placeholderText: root.quoting ? "add your take on " + Model.rowFor(root.quoting).handle + "'s commit…"
-                                    : "What did you ship?"
-      wrapMode: TextEdit.Wrap
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.subtitle
-      background: null
-      text: root.composerText
-      onTextChanged: root.composerText = text
-      Component.onCompleted: root.composerField = field
-      Keys.onPressed: function (event) {
-        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
-          root.postComposer()
-          event.accepted = true
-        } else if (event.key === Qt.Key_Escape) {
-          root.quoting = null
-          scope.forceActiveFocus()
-          event.accepted = true
-        }
-      }
-    }
-
-    Mono {
-      id: hint
-      x: field.x
-      anchors.top: field.bottom
-      width: field.width
-      textFormat: Text.StyledText
-      text: (root.quoting ? root.dimmed("❝ quoting " + Model.rowFor(root.quoting).handle + " " + Model.rowFor(root.quoting).hash + " · esc drops it   ") : "")
-        + root.dimmed(Model.charsLeft(root.composerText) + "  ·  ctrl+enter commits")
-      horizontalAlignment: Text.AlignRight
-    }
-  }
-
 }

@@ -4,11 +4,11 @@ import qs.Commons
 import "Model.js" as Model
 
 // One commit as `git log --graph` would print it: a rail in the author's lane,
-// then who, when and the hash, the body, and a row of actions. Replies use the
+// the avatar, who and when, the body, and a row of actions. Replies use the
 // same row one level in, behind a guide line instead of the rail, and nest
 // through a Loader of this same file.
 //
-// It only talks to `view` (FullPanel): colours, fonts and every action go
+// It only talks to `view` (FullPanel): the palette and every action go
 // through it, so the row never reaches into the service behind it.
 Item {
   id: root
@@ -24,16 +24,20 @@ Item {
   readonly property color lane: view.laneColor(row.lane)
   readonly property bool topLevel: depth === 0
   readonly property var thread: view.threadFor(row.id)
-  readonly property real railWidth: top ? Style.space(30) : Style.space(16)
-  readonly property real pad: Style.space(8)
-  readonly property string age: Model.ageFor(row.created, view.now)
+  readonly property real railWidth: topLevel ? Style.space(34) : Style.space(18)
+  readonly property real avatarSize: topLevel ? Style.space(34) : Style.space(24)
+  readonly property real pad: topLevel ? Style.space(12) : Style.space(6)
+  readonly property real gutter: Style.space(10)
 
-  implicitHeight: body.implicitHeight + (top ? pad * 2 : pad)
+  implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
+  // Selected: a wash and a bar in the action blue, the way the site marks focus.
   Rectangle {
     anchors.fill: parent
+    anchors.leftMargin: root.railWidth
     visible: root.selected
-    color: Style.selectedFillFor(root.view.foreground, Color.accent)
+    color: Qt.rgba(root.view.primary.r, root.view.primary.g, root.view.primary.b, 0.07)
+    Rectangle { width: 2; height: parent.height; color: root.view.primary }
   }
 
   // --- The rail ---------------------------------------------------------------
@@ -45,53 +49,88 @@ Item {
     id: node
     visible: root.topLevel
     x: root.railWidth / 2 - width / 2
-    y: root.pad + Style.space(3)
-    width: Style.space(10)
+    y: root.pad + root.avatarSize / 2 - height / 2
+    width: Style.space(12)
     height: width
     radius: width / 2
     // A deleted commit keeps its place as a hollow node, like a tombstone.
     color: root.row.deleted ? Color.background : root.lane
-    border.width: root.row.deleted ? 2 : 0
-    border.color: root.view.railColor
+    border.width: 2
+    border.color: root.row.deleted ? root.view.railColor : Color.background
   }
 
   // Replies hang off a plain guide line, the way the site indents a thread.
   Rectangle {
     visible: !root.topLevel
-    x: Style.space(4)
+    x: Style.space(6)
     width: 1
     height: root.height
     color: root.view.railColor
   }
 
+  // Rows are split by a hairline that starts after the rail, so the graph runs on.
+  Rectangle {
+    visible: root.topLevel
+    anchors.bottom: parent.bottom
+    x: root.railWidth
+    width: root.width - x
+    height: 1
+    color: root.view.railColor
+  }
+
   // --- The commit -------------------------------------------------------------
+
+  Avatar {
+    id: avatar
+    x: root.railWidth + Style.space(4)
+    y: root.pad
+    size: root.avatarSize
+    source: root.row.deleted ? "" : root.row.avatar
+    name: root.row.name
+    TapHandler { onTapped: root.view.openProfile(root.row.username) }
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
+  }
 
   Column {
     id: body
-    x: root.railWidth
-    y: root.topLevel ? root.pad : root.pad / 2
-    width: root.width - root.railWidth - Style.space(12)
-    spacing: Style.space(3)
+    x: avatar.x + avatar.width + root.gutter
+    y: root.pad
+    width: root.width - x - Style.space(14)
+    spacing: Style.space(4)
 
     Item {
       width: body.width
       height: who.implicitHeight
-      Mono {
+      Row {
         id: who
+        spacing: Style.space(6)
         width: parent.width - hash.implicitWidth - Style.space(8)
-        elide: Text.ElideRight
-        textFormat: Text.StyledText
-        text: root.row.deleted ? root.view.dimmed("[deleted]")
-          : "<b>" + root.view.esc(root.row.name) + "</b> "
-            + root.view.dimmed(root.row.handle + " · " + root.age + (root.row.pending ? " · held" : ""))
+        Mono {
+          id: nameText
+          text: root.row.deleted ? "[deleted]" : root.row.name
+          color: root.row.deleted ? Color.muted : Color.foreground
+          font.pixelSize: Style.font.body
+          font.bold: true
+          elide: Text.ElideRight
+          TapHandler { onTapped: root.view.openProfile(root.row.username) }
+          HoverHandler { cursorShape: Qt.PointingHandCursor }
+        }
+        Mono {
+          visible: !root.row.deleted
+          anchors.baseline: nameText.baseline
+          text: root.row.handle + " · " + Model.ageFor(root.row.created, root.view.now) + (root.row.pending ? " · held" : "")
+          color: Color.muted
+          elide: Text.ElideRight
+        }
       }
       Mono {
         id: hash
         anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
         text: root.row.hash
-        color: Color.accent
+        color: hashHover.hovered ? root.view.primary : Color.muted
         TapHandler { onTapped: root.view.openOnSite(root.row.url) }
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        HoverHandler { id: hashHover; cursorShape: Qt.PointingHandCursor }
       }
     }
 
@@ -99,63 +138,73 @@ Item {
       width: body.width
       visible: text !== ""
       text: root.row.deleted ? "This commit was deleted." : root.row.body
-      color: root.row.deleted ? root.view.dim : root.view.foreground
+      color: root.row.deleted ? Color.muted : Color.foreground
       font.pixelSize: Style.font.body
+      lineHeight: 1.3
       wrapMode: Text.WrapAnywhere
     }
 
     Box {
       visible: !!root.row.quoted
       lines: 6
-      text: root.row.quoted
-        ? root.view.dimmed("❝ " + root.row.quoted.handle + " · " + Model.ageFor(root.row.quoted.created, root.view.now)
-            + " · " + root.row.quoted.hash) + "<br>" + root.view.esc(root.row.quoted.body)
+      heading: root.row.quoted
+        ? "❝ " + root.row.quoted.name + "  " + root.row.quoted.handle + " · " + Model.ageFor(root.row.quoted.created, root.view.now)
         : ""
+      text: root.row.quoted ? root.row.quoted.body : ""
       onTapped: root.view.openOnSite(root.row.quoted.url)
     }
 
     Box {
       visible: !!root.row.link
       lines: 3
-      text: root.row.link ? root.view.dimmed("↗ " + root.row.link.site) + "<br>" + root.view.esc(root.row.link.title) : ""
+      heading: root.row.link ? "↗ " + root.row.link.site : ""
+      text: root.row.link ? root.row.link.title : ""
       onTapped: root.view.openOnSite(root.row.link.url)
     }
 
-    Action {
+    ActionButton {
       visible: root.row.images > 0
-      text: "[" + Model.plural(root.row.images, "image") + " · on the site]"
-      onTapped: root.view.openOnSite(root.row.url)
+      icon: "▣"
+      label: Model.plural(root.row.images, "image") + " on the site"
+      onClicked: root.view.openOnSite(root.row.url)
     }
 
     // --- Actions: each one is also a key on the selected commit ---------------
 
     Row {
       visible: !root.row.deleted
-      spacing: Style.space(14)
+      spacing: Style.space(2)
+      x: -Style.space(6)
 
-      Action {
-        text: (root.row.starred ? "★" : "☆") + (root.row.stars > 0 ? " " + root.row.stars : "")
-        color: root.row.starred ? Color.accent : root.view.dim
-        onTapped: root.view.toggleStar(root.row.id)
+      ActionButton {
+        icon: root.row.starred ? "★" : "☆"
+        label: root.row.stars > 0 ? String(root.row.stars) : ""
+        active: root.row.starred
+        activeColor: root.view.primary
+        onClicked: root.view.toggleStar(root.row)
       }
-      Action {
+      ActionButton {
         visible: root.topLevel
-        text: "quote"
-        onTapped: root.view.startQuote(root.commit)
+        icon: "❝"
+        label: "quote"
+        onClicked: root.view.startQuote(root.commit)
       }
-      Action {
-        text: root.view.replyingTo === root.row.id ? "cancel" : "reply"
-        onTapped: root.view.toggleReply(root.row.id)
+      ActionButton {
+        icon: "↩"
+        label: root.view.replyingTo === root.row.id ? "cancel" : "reply"
+        active: root.view.replyingTo === root.row.id
+        onClicked: root.view.toggleReply(root.row.id)
       }
-      Action {
+      ActionButton {
         visible: root.row.replies > 0
-        text: root.thread ? "▾ hide replies" : "▸ " + Model.plural(root.row.replies, "reply", "replies")
-        color: Color.accent
-        onTapped: root.view.toggleThread(root.row.id)
+        icon: root.thread ? "▾" : "▸"
+        label: root.thread ? "hide replies" : Model.plural(root.row.replies, "reply", "replies")
+        restColor: root.view.primary
+        onClicked: root.view.toggleThread(root.row.id)
       }
-      Action {
-        text: "⧉"
-        onTapped: root.view.copyLink(root.row)
+      ActionButton {
+        icon: "⧉"
+        onClicked: root.view.copyLink(root.row)
       }
     }
 
@@ -163,8 +212,8 @@ Item {
       visible: root.view.replyingTo === root.row.id
       width: body.width
       placeholderText: "reply to " + root.row.handle + "…  (enter sends, esc cancels)"
-      color: root.view.foreground
-      font.family: root.view.fontFamily
+      color: Color.foreground
+      font.family: Style.font.family
       font.pixelSize: Style.font.body
       text: root.view.draftFor(root.row.id)
       onVisibleChanged: if (visible) forceActiveFocus()
@@ -189,56 +238,49 @@ Item {
       }
     }
 
-    Action {
+    ActionButton {
       visible: !!root.thread && (root.thread.loading || root.thread.nextCursor !== "")
-      text: root.thread && root.thread.loading ? "loading replies…" : "more replies…"
-      onTapped: if (!root.thread.loading) root.view.loadMoreReplies(root.row.id, root.thread.nextCursor)
+      label: root.thread && root.thread.loading ? "loading replies…" : "more replies…"
+      onClicked: if (!root.thread.loading) root.view.loadMoreReplies(root.row.id, root.thread.nextCursor)
     }
   }
 
   // --- Building blocks ----------------------------------------------------------
-
-  component Mono: Text {
-    color: root.view.foreground
-    font.family: root.view.fontFamily
-    font.pixelSize: Style.font.bodySmall
-  }
-
-  component Action: Mono {
-    signal tapped()
-    color: root.view.dim
-    TapHandler { onTapped: parent.tapped() }
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
-  }
 
   component RailSegment: Rectangle {
     x: root.railWidth / 2 - 1
     width: 2
   }
 
-  // A quoted commit or a link card: a bordered box, as on the site, without colour.
+  // A quoted commit or a link card: a bordered box, as on the site.
   component Box: Rectangle {
     id: box
-    property alias text: boxText.text
+    property string heading
+    property string text
     property int lines: 3
     signal tapped()
     width: body.width
-    height: boxText.implicitHeight + Style.space(10)
-    color: "transparent"
+    height: boxColumn.implicitHeight + Style.space(14)
+    color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
     border.width: 1
     border.color: root.view.railColor
-    radius: Style.cornerRadius
-    Mono {
-      id: boxText
-      x: Style.space(8)
-      y: Style.space(5)
-      width: box.width - Style.space(16)
-      textFormat: Text.StyledText
-      wrapMode: Text.WrapAnywhere
-      maximumLineCount: box.lines
-      elide: Text.ElideRight
+    radius: Style.space(6)
+    Column {
+      id: boxColumn
+      x: Style.space(10)
+      y: Style.space(7)
+      width: box.width - Style.space(20)
+      spacing: Style.space(2)
+      Mono { width: parent.width; text: box.heading; color: Color.muted; elide: Text.ElideRight }
+      Mono {
+        width: parent.width
+        text: box.text
+        wrapMode: Text.WrapAnywhere
+        maximumLineCount: box.lines
+        elide: Text.ElideRight
+      }
     }
+    HoverHandler { id: boxHover; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: box.tapped() }
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
   }
 }
