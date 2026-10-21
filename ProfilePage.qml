@@ -128,7 +128,7 @@ Item {
       spacing: Style.space(10)
       ActionButton {
         visible: !root.isMe && root.user.is_followed !== undefined
-        icon: root.user.is_followed ? "✓" : "+"
+        icon: root.user.is_followed ? Model.ICONS.following : Model.ICONS.follow
         label: root.user.is_followed ? "following" : "follow"
         active: !root.user.is_followed
         activeColor: root.view.primary

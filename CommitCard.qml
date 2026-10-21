@@ -63,7 +63,7 @@ BorderSurface {
     }
 
     Mono {
-      text: (root.row.starred ? "★ " : "☆ ") + root.row.stars + "    ↩ " + root.row.replies
+      text: (root.row.starred ? Model.ICONS.star : Model.ICONS.unstarred) + " " + root.row.stars + "    " + Model.ICONS.reply + " " + root.row.replies
       color: root.row.starred ? Color.accent : Color.muted
     }
   }

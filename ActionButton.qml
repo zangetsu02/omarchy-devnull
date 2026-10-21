@@ -25,8 +25,26 @@ Rectangle {
     id: content
     anchors.centerIn: parent
     spacing: Style.space(5)
-    Mono { visible: root.icon !== ""; text: root.icon; color: root.ink; font.pixelSize: Style.font.body }
-    Mono { visible: root.label !== ""; text: root.label; color: root.ink; anchors.verticalCenter: parent.verticalCenter }
+    // Glyphs come from different fallback fonts with different metrics, so the
+    // icon sits in a fixed square centred on the label's line, not on its own baseline.
+    Item {
+      visible: root.icon !== ""
+      width: Style.font.body + 2
+      height: width
+      anchors.verticalCenter: parent.verticalCenter
+      Mono {
+        anchors.centerIn: parent
+        text: root.icon
+        color: root.ink
+        font.pixelSize: Style.font.body
+      }
+    }
+    Mono {
+      visible: root.label !== ""
+      anchors.verticalCenter: parent.verticalCenter
+      text: root.label
+      color: root.ink
+    }
   }
 
   HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }

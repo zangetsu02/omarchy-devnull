@@ -23,11 +23,12 @@ git clone https://github.com/zangetsu02/omarchy-devnull ~/.config/omarchy/plugin
 omarchy bar put zangetsu.devnull
 ```
 
-So that the full client floats, centred, instead of joining the tiling layout,
+So that the full client floats, centred and opaque, instead of joining the
+tiling layout with the see-through default every window gets,
 add this to `~/.config/hypr/hyprland.lua` and run `hyprctl reload`:
 
 ```lua
-o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { float = true })
+o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { float = true, tag = "-default-opacity", opacity = "1 1" })
 o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { size = { "(min(1220, monitor_w*0.92))", "(min(800, monitor_h*0.85))" } })
 o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { center = true })
 ```

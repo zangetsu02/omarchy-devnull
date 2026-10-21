@@ -178,7 +178,7 @@ Item {
       x: -Style.space(6)
 
       ActionButton {
-        icon: root.row.starred ? "★" : "☆"
+        icon: root.row.starred ? Model.ICONS.star : Model.ICONS.unstarred
         label: root.row.stars > 0 ? String(root.row.stars) : ""
         active: root.row.starred
         activeColor: root.view.primary
@@ -186,25 +186,25 @@ Item {
       }
       ActionButton {
         visible: root.topLevel
-        icon: "❝"
+        icon: Model.ICONS.quote
         label: "quote"
         onClicked: root.view.startQuote(root.commit)
       }
       ActionButton {
-        icon: "↩"
+        icon: Model.ICONS.reply
         label: root.view.replyingTo === root.row.id ? "cancel" : "reply"
         active: root.view.replyingTo === root.row.id
         onClicked: root.view.toggleReply(root.row.id)
       }
       ActionButton {
         visible: root.row.replies > 0
-        icon: root.thread ? "▾" : "▸"
+        icon: root.thread ? Model.ICONS.collapse : Model.ICONS.expand
         label: root.thread ? "hide replies" : Model.plural(root.row.replies, "reply", "replies")
         restColor: root.view.primary
         onClicked: root.view.toggleThread(root.row.id)
       }
       ActionButton {
-        icon: "⧉"
+        icon: Model.ICONS.copy
         onClicked: root.view.copyLink(root.row)
       }
     }

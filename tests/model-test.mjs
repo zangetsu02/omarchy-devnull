@@ -186,3 +186,5 @@ assert.equal(Model.rowFor({ id: "n" }).images.length, 0)
 assert.deepEqual({ ...Model.fitImage({ width: 800, height: 400 }, 400, 300) }, { width: 400, height: 200 })
 assert.deepEqual({ ...Model.fitImage({ width: 900, height: 1600 }, 400, 320) }, { width: 180, height: 320 })
 assert.deepEqual({ ...Model.fitImage({ width: 100, height: 50 }, 400, 300) }, { width: 100, height: 50 })
+// Every action icon is one Nerd Font glyph from a private use area.
+for (const glyph of Object.values(Model.ICONS)) assert.ok(glyph.codePointAt(0) >= 0xe000, glyph)

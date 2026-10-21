@@ -19,6 +19,15 @@ var VERBS = {
     leveled_up: "levelled you up"
 }
 
+// Action icons from the Nerd Font Omarchy ships as its monospace font: one
+// font, one set of metrics, so they line up with the labels beside them.
+// (☆ ↩ ⧉ came from different fallback fonts and sat at different heights.)
+var ICONS = {
+    star: "\u{f04ce}", unstarred: "\u{f04d2}", reply: "\u{f045a}", quote: "\u{f10d}",
+    copy: "\u{f018f}", expand: "\u{f0142}", collapse: "\u{f0140}",
+    follow: "\u{f0415}", following: "\u{f012c}"
+}
+
 // --- Small immutable helpers ----------------------------------------------------
 //
 // QML only redraws what it sees reassigned, so state is never edited in place:
