@@ -20,7 +20,7 @@ Item {
   property var manifest: null
   property bool opened: false
 
-  readonly property string pluginId: manifest && manifest.id ? String(manifest.id) : "zangetsu.devnull"
+  readonly property string pluginId: manifest && manifest.id ? String(manifest.id) : "io.github.zangetsu02.devnull"
 
   // --- Look ---------------------------------------------------------------------
 
