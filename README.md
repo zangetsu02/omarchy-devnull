@@ -1,7 +1,88 @@
 # dev-null
 
-[dev-null.sh](https://dev-null.sh) in the Omarchy bar: the feed, a star, a reply.
+[dev-null.sh](https://dev-null.sh) in the Omarchy bar. An icon that stays dark
+until something is unread, and a panel with what happened to you on top and the
+Latest feed below. You can star and you can reply. Everything else — quoting,
+images, polls, search, profiles, private messages — opens the website, which is
+one click away and already good at all of it.
 
-Anything bigger than that opens the website.
+## Why it pairs a device instead of logging in
 
-Status: design. No code yet.
+dev-null has a real API, the one its mobile app uses, and it is authenticated by
+**signing each request with an SSH key you approved as a device**. So:
+
+- No cookie is borrowed from your browser and no password is stored anywhere.
+- The key is made here, lives in `~/.local/share/omarchy-devnull`, and is never
+  added to your SSH agent or uploaded to GitHub. It does not need to be on
+  GitHub: approving it on the site is the proof.
+- Every signature is scoped to the `devnull-api` namespace, which is the only
+  thing it is good for. It cannot sign a git commit and it cannot log you in
+  anywhere else.
+
+The signed message is the timestamp, a nonce, the method, the path and the body,
+and it travels in three headers. `scripts/devnull` is the only thing that
+touches the key; the QML asks it and reads JSON back.
+
+## Setup
+
+```bash
+~/.config/omarchy/plugins/zangetsu.devnull/scripts/setup-devnull
+```
+
+It makes the key, registers a handler for `devnull://` links, opens the approval
+page in your browser, and redeems the code that comes back. One minute, once.
+
+Then, if you have never done it, **accept the commit rules on dev-null.sh**.
+Until you do, the server refuses every reply — from here, from the app, from
+anywhere.
+
+## Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| Unread check while closed | 60s | Fetches only the unread count. See below. |
+| Feed refresh while open | 20s | Reloads the feed while you are looking at it. |
+| Commits kept | 50 | How far back the panel remembers. |
+| Lines shown | 2 | Longer commits are cut; click to read on the site. |
+
+## Three things worth knowing
+
+**The badge counts everything.** Replies and mentions, but also stars, follows
+and moderation outcomes. The only count that can be fetched without side effects
+is a single total, with no breakdown — see the next point for why that matters.
+
+**Opening the panel marks your notifications read**, on the website and in the
+official app too. That is not a choice this plugin makes: listing notifications
+is what marks them read, upstream, whatever filter you ask for. So the closed
+panel never lists them — it only asks for the count — and the list is fetched
+once, when you open it, because opening it *is* reading them.
+
+**A reply can be held.** dev-null moderates commits from accounts without
+"good reputation", so yours may come back pending. The panel says which; it
+never pretends a held reply is live.
+
+## When it breaks
+
+The icon goes crossed after three refusals in a row from a device that is no
+longer approved, and the panel tells you to run the setup again. A wrong clock
+or a dead network look different on purpose: they say so, and they never send
+you off to re-pair something that was never broken.
+
+## Limits
+
+`devnull://` is the official app's URL scheme, and pairing borrows its flow.
+It works, your account is your own, but this is not a sanctioned third-party
+API: if that flow ever closes, pairing stops working. Nothing else here depends
+on it once the device is approved.
+
+The site is weeks old and its API is undocumented. Shapes can change.
+
+## Tests
+
+```bash
+tests/signing-test && tests/pairing-test && tests/read-test && tests/write-test
+node tests/model-test.mjs && node tests/service-test.mjs
+```
+
+Nothing there touches dev-null.sh: `tests/mock-devnull` stands in for it, so no
+test ever posts a real commit.
