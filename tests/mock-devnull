@@ -33,6 +33,15 @@ COMMITS = [
      "html_url": "https://dev-null.sh/@ndk98z/commits/01a15d76"},
 ]
 
+REPLIES = [
+    {"id": "01a15d90-0000-7000-8000-000000000001", "short_hash": "0000001",
+     "body": "Seems like github pages tho", "parent_id": COMMITS[0]["id"],
+     "author": {"username": "pptx704", "name": "pptx704", "lane": 3},
+     "stars_count": 0, "starred": False, "status": "approved", "replies_count": 0,
+     "created_at": "2026-10-21T07:20:00.000000Z",
+     "html_url": "https://dev-null.sh/@pptx704/commits/01a15d90"},
+]
+
 NOTIFICATIONS = [
     {"id": "n1", "type": "replied", "read_at": None,
      "actor": {"username": "pptx704"}, "commit": {"short_hash": "d453634", "body": "Seems like github pages tho"}},
@@ -151,8 +160,10 @@ def handler_for(state):
             if path == "/api/v1/me":
                 self.reply(200, {"data": {"username": "zangetsu02"},
                                  "unread_notifications_count": 3})
-            elif path == "/api/v1/log/latest":
+            elif path in ("/api/v1/log/latest", "/api/v1/log/following", "/api/v1/log/trending"):
                 self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
+                self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
             elif path == "/api/v1/notifications":
                 state.notifications_calls += 1
                 self.reply(200, {"data": NOTIFICATIONS, "read_at": "2026-10-21T08:00:00Z"})

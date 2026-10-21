@@ -5,11 +5,16 @@ Usage: devnull <command> [arguments]
 
   me                     who the paired key signs in as, and the unread count
   pair <code> <verifier> redeem an authorization code; writes device.json
-  feed [--cursor C]      the Latest log, 20 commits and the cursor for the next
+  feed [--log L] [--cursor C]
+                         a log (latest, following, trending), 20 commits and the cursor for the next
   notifications          what happened to you — THIS MARKS THEM READ everywhere
   star <id>              star a commit
   unstar <id>            take the star back
   reply <id> <body>      reply to a commit; the answer says whether it is live
+  replies <id> [--cursor C]
+                         the direct replies to a commit, oldest first
+  commit <body> [--quote <id>]
+                         a new commit on the log, or a quote of <id>
 
 Every command prints one JSON object on stdout. A failure prints
 {"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
@@ -116,6 +121,8 @@ def call(method, path, body=None):
         "X-Devnull-Nonce": nonce,
         "X-SSH-Signature": header_signature(signature),
         "Accept": "application/json",
+        # Cloudflare in front of dev-null.sh bans urllib's default agent (error 1010).
+        "User-Agent": "omarchy-devnull/0.1.0",
     }
     if data:
         headers["Content-Type"] = "application/json"
@@ -141,16 +148,45 @@ def cmd_me():
     return call("GET", "/api/v1/me")
 
 
-def cmd_feed(*args):
-    """The Latest log. The cursor is part of the signed URI, so it goes on the path."""
-    path = "/api/v1/log/latest"
-    if len(args) == 2 and args[0] == "--cursor":
-        path += "?" + urllib.parse.urlencode({"cursor": args[1]})
+LOGS = ("latest", "following", "trending")
+
+
+def paged(args):
+    """Pulls --cursor out of the arguments; the rest come back untouched."""
+    args, cursor = list(args), None
+    if "--cursor" in args:
+        at = args.index("--cursor")
+        cursor = args[at + 1]
+        del args[at:at + 2]
+    return args, cursor
+
+
+def page(path, cursor):
+    """A Laravel resource page as {items, next_cursor}. The cursor is part of the
+    signed URI, so it goes on the path."""
+    if cursor:
+        path += "?" + urllib.parse.urlencode({"cursor": cursor})
     answer = call("GET", path)
-    return {
-        "commits": answer.get("data", []),
-        "next_cursor": answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor"),
-    }
+    return answer.get("data", []), answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor")
+
+
+def cmd_feed(*args):
+    """A log: latest (default), following or trending."""
+    args, cursor = paged(args)
+    log = "latest"
+    if len(args) == 2 and args[0] == "--log":
+        log = args[1]
+    if log not in LOGS:
+        raise BridgeError(f"No log called {log!r}.", "http")
+    commits, cursor = page(f"/api/v1/log/{log}", cursor)
+    return {"commits": commits, "next_cursor": cursor}
+
+
+def cmd_replies(commit_id, *args):
+    """The direct replies to one commit, oldest first, as the site shows a thread."""
+    _, cursor = paged(args)
+    replies, cursor = page(f"/api/v1/commits/{commit_id}/replies", cursor)
+    return {"replies": replies, "next_cursor": cursor}
 
 
 def cmd_notifications():
@@ -176,6 +212,15 @@ def cmd_reply(commit_id, body):
     return answer.get("data", answer)
 
 
+def cmd_commit(body, *args):
+    """A new commit on the log, or a quote of another one with --quote <id>."""
+    payload = {"body": body}
+    if len(args) == 2 and args[0] == "--quote":
+        payload["quoted_commit_id"] = args[1]
+    answer = call("POST", "/api/v1/commits", payload)
+    return answer.get("data", answer)
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -193,7 +238,8 @@ def cmd_pair(code, verifier):
 
 COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "notifications": cmd_notifications, "star": cmd_star,
-            "unstar": cmd_unstar, "reply": cmd_reply}
+            "unstar": cmd_unstar, "reply": cmd_reply, "replies": cmd_replies,
+            "commit": cmd_commit}
 
 
 def main():

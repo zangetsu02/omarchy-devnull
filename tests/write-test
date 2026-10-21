@@ -55,6 +55,13 @@ def main():
         assert answer["status"] == "pending"
         assert answer["short_hash"] == "aaaaaaa"
 
+        # A new commit has no parent; a quote names the quoted commit instead.
+        answer, code = run("commit", "shipped it")
+        assert code == 0 and json.loads(state.last_body) == {"body": "shipped it"}
+        answer, code = run("commit", "so true", "--quote", ID)
+        assert code == 0
+        assert json.loads(state.last_body) == {"body": "so true", "quoted_commit_id": ID}
+
         # Review Focus: the server's 422 reaches the caller as its own text.
         state.next_status = 422
         state.next_response = {"message": "The body field is required."}

@@ -46,6 +46,21 @@ def main():
         run("feed", "--cursor", mock_module.CURSOR)
         assert state.last_uri == f"/api/v1/log/latest?cursor={mock_module.CURSOR}"
 
+        # The other two logs are the same call on their own route.
+        run("feed", "--log", "trending")
+        assert state.last_uri == "/api/v1/log/trending"
+        run("feed", "--log", "following", "--cursor", mock_module.CURSOR)
+        assert state.last_uri == f"/api/v1/log/following?cursor={mock_module.CURSOR}"
+        # A log the site does not have is refused here, not sent.
+        calls = len(state.calls)
+        answer, code = run("feed", "--log", "everyone")
+        assert code == 1 and len(state.calls) == calls
+
+        # A thread is the replies route of its commit.
+        thread, code = run("replies", "c1")
+        assert code == 0 and thread["replies"][0]["author"]["username"] == "pptx704"
+        assert state.last_uri == "/api/v1/commits/c1/replies"
+
         # `me` does not touch notifications — the whole point of the design.
         before = state.notifications_calls
         me, code = run("me")
