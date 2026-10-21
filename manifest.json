@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Christian Palladini",
   "license": "MIT",
-  "description": "dev-null.sh in the Omarchy bar: the Latest feed, what happened to you, a star and a reply. Everything bigger opens the website.",
+  "description": "dev-null.sh in the Omarchy shell: an unread badge in the bar, a glance popup, and a full keyboard-driven client drawn as a git log --graph.",
   "kinds": [
     "bar-widget",
     "panel"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "dev-null",
-    "description": "The dev-null.sh feed in the bar, with an unread count. Star and reply from the panel; anything else opens the commit in the browser.",
+    "description": "The dev-null.sh badge and popup. Open summons the full client: logs, threads, notifications, starred commits and profiles.",
     "category": "Social",
     "allowMultiple": false,
     "defaultSection": "right",

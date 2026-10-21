@@ -1,10 +1,42 @@
 # dev-null
 
-[dev-null.sh](https://dev-null.sh) in the Omarchy bar. An icon that stays dark
-until something is unread, and a panel with what happened to you on top and the
-Latest feed below. You can star and you can reply. Everything else — quoting,
-images, polls, search, profiles, private messages — opens the website, which is
-one click away and already good at all of it.
+[dev-null.sh](https://dev-null.sh), the social network for developers, inside
+the [Omarchy](https://omarchy.org) shell. No browser tab: a badge in the bar, a
+popup for a glance, and a full client you drive from the keyboard, drawn the
+way `git log --graph` would draw it.
+
+- **The bar:** an icon that stays dark until something is unread, with the count.
+- **The popup** (click the icon): who reached you and the last three commits.
+  `o` or **Open** goes to the full client.
+- **The full client:** the following, latest and trending logs on a commit
+  graph, threads opened in place, notifications, your starred commits and
+  anyone's profile. Star, reply, quote, commit and follow without leaving it.
+
+It follows the Omarchy theme for background, text and font, and uses
+dev-null's own palette for the author lanes and the action blue.
+
+## Install
+
+```bash
+git clone https://github.com/zangetsu02/omarchy-devnull ~/.config/omarchy/plugins/zangetsu.devnull
+omarchy bar put zangetsu.devnull
+```
+
+Then pair this machine once, as below.
+
+## Keys in the full client
+
+| Keys | What they do |
+|---|---|
+| `j` `k` (or arrows) | move between commits |
+| `1` `2` `3` | following · latest · trending |
+| `o` | show or hide the replies |
+| `s` · `r` · `q` | star · reply · quote |
+| `c` | write a commit (`ctrl+enter` sends it) |
+| `p` | the author's profile |
+| `y` · `enter` | copy the link · open it on the site |
+| `g l` `g n` `g s` `g p` | log · notifications · starred · your profile |
+| `⌫` · `R` · `esc` | back · refresh · close |
 
 ## Why it pairs a device instead of logging in
 
@@ -41,8 +73,8 @@ anywhere.
 | Setting | Default | What it does |
 |---|---|---|
 | Unread check while closed | 60s | Fetches only the unread count. See below. |
-| Feed refresh while open | 20s | Reloads the feed while you are looking at it. |
-| Lines shown | 2 | Longer commits are cut; click to read on the site. |
+| Feed refresh while open | 20s | Reloads the popup's feed while you are looking at it. |
+| Lines shown | 2 | Lines of each commit in the popup; the full client shows them whole. |
 
 ## Three things worth knowing
 
@@ -80,11 +112,26 @@ on it once the device is approved.
 
 The site is weeks old and its API is undocumented. Shapes can change.
 
+## How it is put together
+
+| File | Role |
+|---|---|
+| `scripts/devnull` | The only thing that talks to dev-null.sh: signs each request, prints JSON. |
+| `scripts/setup-devnull`, `scripts/devnull-callback` | Pairing, once. |
+| `Model.js` | Pure functions: what to call when, how a commit becomes a row, the palette. |
+| `Service.qml` | Runs the bridge and holds the log, threads and notifications. |
+| `Pager.qml` | Any other paged list: starred, a profile's commits, followers. |
+| `Panel.qml`, `CommitCard.qml` | The bar icon and its popup. |
+| `FullPanel.qml` | The full client: layout, keys, navigation, and the actions rows call. |
+| `LogRow.qml`, `NoticeRow.qml`, `ProfilePage.qml`, `Composer.qml`, `CommitList.qml` | Its pieces. |
+| `Avatar.qml`, `ActionButton.qml`, `Mono.qml` | Shared building blocks. |
+
+Rows and pages only talk to `FullPanel`; it is the one that knows the service.
+
 ## Tests
 
 ```bash
-tests/signing-test && tests/pairing-test && tests/read-test && tests/write-test
-node tests/model-test.mjs && node tests/service-test.mjs
+tests/run
 ```
 
 Nothing there touches dev-null.sh: `tests/mock-devnull` stands in for it, so no
