@@ -26,7 +26,14 @@ Item {
     root.tab = "commits"
     if (root.username !== "") root.service.fetchUser(root.username, function (user) {
       // Another profile may have been opened while this one was on its way.
-      if (user.username === root.username) root.user = user
+      if (user.username !== root.username) return
+      root.user = user
+      // The header grows once the profile lands (bio, counts), and a list does
+      // not move its start for a header that changed size: back to the top.
+      Qt.callLater(function () {
+        commitList.positionViewAtBeginning()
+        people.positionViewAtBeginning()
+      })
     })
   }
 
