@@ -16,6 +16,12 @@ way `git log --graph` would draw it.
 It follows the Omarchy theme for background, text and font, and uses
 dev-null's own palette for the author lanes and the action blue.
 
+![The log as a commit graph, with link cards and quotes](docs/screenshots/log.png)
+
+| Notifications | A profile |
+|---|---|
+| ![Notifications on the rail, each with its icon](docs/screenshots/notifications.png) | ![A profile with its commits, followers and following](docs/screenshots/profile.png) |
+
 ## Install
 
 ```bash
