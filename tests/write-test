@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""The write half of the bridge, against the mock. Run with: tests/write-test"""
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE.parent / "scripts" / "devnull"
+ID = "01a15d37-0511-7071-a1ae-d28a502b4a24"
+
+spec = importlib.util.spec_from_loader(
+    "mock_devnull", importlib.machinery.SourceFileLoader("mock_devnull", str(HERE / "mock-devnull"))
+)
+mock_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mock_module)
+
+
+def main():
+    state, url, stop = mock_module.start()
+    tmp = tempfile.TemporaryDirectory()
+    home = Path(tmp.name)
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                    "-f", str(home / "id_ed25519")], check=True)
+    environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
+
+    def run(*args):
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=environment)
+        return json.loads(result.stdout or "{}"), result.returncode
+
+    try:
+        # A star is a POST with no body, and the signed URI is the star route.
+        answer, code = run("star", ID)
+        assert code == 0 and answer["starred"] is True, answer
+        assert state.last_method == "POST" and state.last_uri == f"/api/v1/commits/{ID}/star"
+
+        # Un-starring is the same route, deleted.
+        answer, code = run("unstar", ID)
+        assert code == 0 and answer["starred"] is False
+        assert state.last_method == "DELETE" and state.last_uri == f"/api/v1/commits/{ID}/star"
+
+        # A reply sends body and parent_id as JSON, and the bytes signed are the bytes sent.
+        answer, code = run("reply", ID, "Agreed")
+        assert code == 0, answer
+        assert json.loads(state.last_body) == {"body": "Agreed", "parent_id": ID}
+        assert state.signature_covered_body is True
+
+        # A moderated reply reports what came back, not an assumption.
+        assert answer["status"] == "pending"
+        assert answer["short_hash"] == "aaaaaaa"
+
+        # Review Focus: the server's 422 reaches the caller as its own text.
+        state.next_status = 422
+        state.next_response = {"message": "The body field is required."}
+        answer, code = run("reply", ID, "  ")
+        assert code == 1 and answer["error"] == "The body field is required."
+        assert answer["kind"] == "http"
+
+        # An over-long body is the server's call too: it is sent, not trimmed here.
+        state.next_status = 422
+        state.next_response = {"message": "The body may not be greater than 4000 characters."}
+        answer, code = run("reply", ID, "x" * 4001)
+        assert code == 1 and answer["kind"] == "http"
+        assert json.loads(state.last_body)["body"] == "x" * 4001
+
+        print("write: all checks passed")
+    finally:
+        stop()
+        tmp.cleanup()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

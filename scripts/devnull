@@ -7,6 +7,9 @@ Usage: devnull <command> [arguments]
   pair <code> <verifier> redeem an authorization code; writes device.json
   feed [--cursor C]      the Latest log, 20 commits and the cursor for the next
   notifications          what happened to you — THIS MARKS THEM READ everywhere
+  star <id>              star a commit
+  unstar <id>            take the star back
+  reply <id> <body>      reply to a commit; the answer says whether it is live
 
 Every command prints one JSON object on stdout. A failure prints
 {"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
@@ -157,6 +160,21 @@ def cmd_notifications():
     return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
 
 
+def cmd_star(commit_id):
+    return call("POST", f"/api/v1/commits/{commit_id}/star")
+
+
+def cmd_unstar(commit_id):
+    return call("DELETE", f"/api/v1/commits/{commit_id}/star")
+
+
+def cmd_reply(commit_id, body):
+    """The body goes as typed: length and emptiness are the server's rules, and its
+    refusal is more useful than a guess made here."""
+    answer = call("POST", "/api/v1/commits", {"body": body, "parent_id": commit_id})
+    return answer.get("data", answer)
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -173,7 +191,8 @@ def cmd_pair(code, verifier):
 
 
 COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
-            "notifications": cmd_notifications}
+            "notifications": cmd_notifications, "star": cmd_star,
+            "unstar": cmd_unstar, "reply": cmd_reply}
 
 
 def main():
