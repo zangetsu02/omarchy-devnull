@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""The read half of the bridge, against the mock. Run with: tests/read-test"""
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE.parent / "scripts" / "devnull"
+
+spec = importlib.util.spec_from_loader(
+    "mock_devnull", importlib.machinery.SourceFileLoader("mock_devnull", str(HERE / "mock-devnull"))
+)
+mock_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mock_module)
+
+
+def main():
+    state, url, stop = mock_module.start()
+    tmp = tempfile.TemporaryDirectory()
+    home = Path(tmp.name)
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                    "-f", str(home / "id_ed25519")], check=True)
+    environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
+
+    def run(*args):
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=environment)
+        return json.loads(result.stdout or "{}"), result.returncode
+
+    try:
+        # The feed comes back as a list, newest first, with the fields the panel needs.
+        feed, code = run("feed")
+        assert code == 0, feed
+        assert [c["short_hash"] for c in feed["commits"]] == ["d453634", "36795c7"]
+        assert feed["next_cursor"] == mock_module.CURSOR
+        assert feed["commits"][0]["author"]["username"] == "zangetsu02"
+        assert feed["commits"][0]["html_url"].startswith("https://dev-null.sh/")
+
+        # A second page is asked for with the cursor, on the query string that got signed.
+        run("feed", "--cursor", mock_module.CURSOR)
+        assert state.last_uri == f"/api/v1/log/latest?cursor={mock_module.CURSOR}"
+
+        # `me` does not touch notifications — the whole point of the design.
+        before = state.notifications_calls
+        me, code = run("me")
+        assert code == 0 and me["unread_notifications_count"] == 3
+        assert state.notifications_calls == before
+
+        # `notifications` does, once, and hands back the boundary.
+        notifications, code = run("notifications")
+        assert code == 0
+        assert state.notifications_calls == before + 1
+        assert notifications["read_at"].endswith("Z")
+        assert notifications["notifications"][0]["type"] == "replied"
+
+        # Every call signs with a fresh nonce: the mock refuses a replayed one.
+        assert len(state.spent_nonces) == len(state.calls)
+
+        # A failure is one JSON line with a kind, never a traceback.
+        state.next_status = 401
+        state.next_response = {"code": "device_not_approved", "message": "Not approved."}
+        answer, code = run("me")
+        assert code == 1 and answer["kind"] == "auth" and answer["error"] == "Not approved."
+
+        print("read: all checks passed")
+    finally:
+        stop()
+        tmp.cleanup()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -5,6 +5,8 @@ Usage: devnull <command> [arguments]
 
   me                     who the paired key signs in as, and the unread count
   pair <code> <verifier> redeem an authorization code; writes device.json
+  feed [--cursor C]      the Latest log, 20 commits and the cursor for the next
+  notifications          what happened to you — THIS MARKS THEM READ everywhere
 
 Every command prints one JSON object on stdout. A failure prints
 {"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
@@ -23,6 +25,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -135,6 +138,25 @@ def cmd_me():
     return call("GET", "/api/v1/me")
 
 
+def cmd_feed(*args):
+    """The Latest log. The cursor is part of the signed URI, so it goes on the path."""
+    path = "/api/v1/log/latest"
+    if len(args) == 2 and args[0] == "--cursor":
+        path += "?" + urllib.parse.urlencode({"cursor": args[1]})
+    answer = call("GET", path)
+    return {
+        "commits": answer.get("data", []),
+        "next_cursor": answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor"),
+    }
+
+
+def cmd_notifications():
+    """Listing marks every notification read, upstream, for the web and the app too.
+    Only call this when he opens the panel, never on a timer."""
+    answer = call("GET", "/api/v1/notifications")
+    return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -150,7 +172,8 @@ def cmd_pair(code, verifier):
     return device
 
 
-COMMANDS = {"me": cmd_me, "pair": cmd_pair}
+COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
+            "notifications": cmd_notifications}
 
 
 def main():
