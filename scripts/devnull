@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""dev-null.sh from the Omarchy bar.
+
+Usage: devnull <command> [arguments]
+
+  me                     who the paired key signs in as, and the unread count
+
+Every command prints one JSON object on stdout. A failure prints
+{"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
+
+Requests are signed with an SSH key kept in ~/.local/share/omarchy-devnull,
+in the "devnull-api" namespace, which is the only thing that signature is
+good for: it cannot sign a git commit or log in anywhere.
+"""
+
+import json
+import os
+import secrets
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+NAMESPACE = "devnull-api"
+BASE_URL = os.environ.get("DEVNULL_URL", "https://dev-null.sh").rstrip("/")
+HOME = Path(os.environ.get("DEVNULL_HOME", Path.home() / ".local/share/omarchy-devnull"))
+KEY = HOME / "id_ed25519"
+TIMEOUT = 15
+
+# Only device_not_approved means the pairing is gone. invalid_signature shares
+# its 401 and usually means the clock is off, which re-pairing would not fix.
+KINDS = {
+    "device_not_approved": "auth",
+    "invalid_signature": "expired",
+    "commit_rules_required": "rules",
+    "rate_limited": "limited",
+}
+
+
+class BridgeError(Exception):
+    def __init__(self, message, kind="http"):
+        super().__init__(message)
+        self.kind = kind
+
+
+def signed_message(timestamp, nonce, method, uri, body):
+    """The five fields the server joins and checks, in its order."""
+    return "\n".join([timestamp, nonce, method, uri, body])
+
+
+def new_nonce():
+    return secrets.token_hex(16)
+
+
+def sign(message, key_path=None):
+    """An armored SSH signature over the message, in the devnull-api namespace."""
+    key_path = Path(key_path or KEY)
+    if not key_path.exists():
+        raise BridgeError(f"No key at {key_path}. Run scripts/setup-devnull.", "auth")
+    old_umask = os.umask(0o077)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "message"
+            payload.write_text(message)
+            result = subprocess.run(
+                ["ssh-keygen", "-Y", "sign", "-n", NAMESPACE, "-f", str(key_path), str(payload)],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                raise BridgeError(result.stderr.strip() or "ssh-keygen could not sign.", "auth")
+            return (Path(tmp) / "message.sig").read_text()
+    finally:
+        os.umask(old_umask)
+
+
+def classify(status, code, message):
+    """Which kind of failure this is. The body's code decides, not the status."""
+    if status is None:
+        return "network"
+    if code in KINDS:
+        return KINDS[code]
+    if "signature expired" in (message or "").lower():
+        return "expired"
+    if status == 401:
+        return "auth"
+    return "http"
+
+
+def call(method, path, body=None):
+    """One signed request. `path` is signed exactly as sent, query included."""
+    payload = "" if body is None else json.dumps(body, separators=(",", ":"))
+    data = payload.encode() if payload else None
+    timestamp = str(int(time.time()))
+    nonce = new_nonce()
+    signature = sign(signed_message(timestamp, nonce, method, path, payload))
+
+    headers = {
+        "X-Devnull-Timestamp": timestamp,
+        "X-Devnull-Nonce": nonce,
+        "X-SSH-Signature": signature,
+        "Accept": "application/json",
+    }
+    if data:
+        headers["Content-Type"] = "application/json"
+
+    request = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            raw = response.read().decode()
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode(errors="replace")
+        try:
+            answer = json.loads(raw)
+        except ValueError:
+            answer = {}
+        message = answer.get("message") or answer.get("error") or error.reason
+        raise BridgeError(message, classify(error.code, answer.get("code"), message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(error.reason), "network") from error
+
+
+def cmd_me():
+    return call("GET", "/api/v1/me")
+
+
+COMMANDS = {"me": cmd_me}
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] not in COMMANDS:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    try:
+        print(json.dumps(COMMANDS[argv[0]](*argv[1:])))
+        return 0
+    except BridgeError as error:
+        print(json.dumps({"error": str(error), "kind": error.kind}))
+        return 1
+    except Exception as error:  # the panel gets a line, not a traceback
+        print(json.dumps({"error": f"{type(error).__name__}: {error}", "kind": "http"}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

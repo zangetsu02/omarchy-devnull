@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Offline checks for the signing core. Run with: tests/signing-test
+
+Nothing here touches the network: the signature is verified with
+`ssh-keygen -Y verify` against a throwaway key, the way the server does it.
+"""
+
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE.parent / "scripts" / "devnull"
+
+
+def load_bridge():
+    spec = importlib.util.spec_from_loader(
+        "devnull", importlib.machinery.SourceFileLoader("devnull", str(BRIDGE))
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def verify(key_dir, message, signature, namespace):
+    """Ask ssh-keygen whether the signature is good under that namespace."""
+    allowed = key_dir / "allowed_signers"
+    public = (key_dir / "id_ed25519.pub").read_text().strip()
+    allowed.write_text(f"tester@localhost {public}\n")
+    signature_file = key_dir / "sig"
+    signature_file.write_text(signature)
+    result = subprocess.run(
+        ["ssh-keygen", "-Y", "verify", "-f", str(allowed), "-I", "tester@localhost",
+         "-n", namespace, "-s", str(signature_file)],
+        input=message.encode(), capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def main():
+    devnull = load_bridge()
+
+    # The message is the five fields joined by newlines, in order, nothing else.
+    assert devnull.signed_message("1771600000", "a" * 32, "GET", "/api/v1/me", "") == (
+        "1771600000\n" + "a" * 32 + "\nGET\n/api/v1/me\n"
+    ), "the empty body still gets its separator"
+
+    # A body is the fifth field, signed as the exact bytes that get sent.
+    assert devnull.signed_message(
+        "1771600000", "b" * 32, "POST", "/api/v1/commits", '{"body":"hi"}'
+    ).endswith('\n{"body":"hi"}')
+
+    # A nonce is 32 hex characters, and two in a row differ.
+    assert re.fullmatch(r"[0-9a-f]{32}", devnull.new_nonce())
+    assert devnull.new_nonce() != devnull.new_nonce()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        key_dir = Path(tmp)
+        key = key_dir / "id_ed25519"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key)],
+            check=True,
+        )
+        message = devnull.signed_message("1771600000", "c" * 32, "GET", "/api/v1/me", "")
+        signature = devnull.sign(message, key)
+
+        # A signature over the message verifies against the key that made it.
+        assert verify(key_dir, message, signature, "devnull-api") is True
+
+        # The namespace is not interchangeable: verifying under devnull-commit fails.
+        assert verify(key_dir, message, signature, "devnull-commit") is False
+
+        # The key file is never left world-readable behind us.
+        assert oct(key.stat().st_mode)[-3:] == "600"
+
+        # Signing leaves nothing behind in the key's directory.
+        assert sorted(p.name for p in key_dir.iterdir()) == [
+            "allowed_signers", "id_ed25519", "id_ed25519.pub", "sig",
+        ]
+
+    # A clock-skew rejection is its own kind, not a generic error and NOT auth:
+    # upstream answers 401 for both invalid_signature and device_not_approved,
+    # and only the latter may count toward the re-pair state.
+    assert devnull.classify(401, "invalid_signature",
+                            "Signature expired. Check that your clock is right.") == "expired"
+    assert devnull.classify(401, "device_not_approved",
+                            "This key isn't approved for the /dev/null app.") == "auth"
+    assert devnull.classify(403, "commit_rules_required", "") == "rules"
+    assert devnull.classify(429, "rate_limited", "Too Many Attempts.") == "limited"
+    assert devnull.classify(500, "", "Server Error") == "http"
+    assert devnull.classify(None, None, "Name or service not known") == "network"
+
+    print("signing: all checks passed")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
