@@ -62,6 +62,13 @@ def main():
         assert code == 0
         assert json.loads(state.last_body) == {"body": "so true", "quoted_commit_id": ID}
 
+        # Following answers 204; the bridge says what changed.
+        answer, code = run("follow", "pptx704")
+        assert code == 0 and answer == {"username": "pptx704", "is_followed": True}
+        assert state.last_method == "POST" and state.last_uri == "/api/v1/users/pptx704/follow"
+        answer, code = run("unfollow", "pptx704")
+        assert code == 0 and answer["is_followed"] is False and state.last_method == "DELETE"
+
         # Review Focus: the server's 422 reaches the caller as its own text.
         state.next_status = 422
         state.next_response = {"message": "The body field is required."}

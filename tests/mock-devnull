@@ -42,6 +42,9 @@ REPLIES = [
      "html_url": "https://dev-null.sh/@pptx704/commits/01a15d90"},
 ]
 
+USER = {"username": "pptx704", "name": "pptx704", "lane": 3, "bio": "ships things",
+        "commits_count": 9, "followers_count": 4, "following_count": 2, "is_followed": False}
+
 NOTIFICATIONS = [
     {"id": "n1", "type": "replied", "read_at": None,
      "actor": {"username": "pptx704"}, "commit": {"short_hash": "d453634", "body": "Seems like github pages tho"}},
@@ -104,6 +107,11 @@ def handler_for(state):
             self.end_headers()
             self.wfile.write(body)
 
+        def no_content(self):
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def signed(self):
             """The three headers, well-formed, and a nonce that was never used."""
             timestamp = self.headers.get("X-Devnull-Timestamp", "")
@@ -162,6 +170,12 @@ def handler_for(state):
                                  "unread_notifications_count": 3})
             elif path in ("/api/v1/log/latest", "/api/v1/log/following", "/api/v1/log/trending"):
                 self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
+            elif re.fullmatch(r"/api/v1/users/[^/]+", path):
+                self.reply(200, {"data": USER})
+            elif re.fullmatch(r"/api/v1/users/[^/]+/(followers|following)", path):
+                self.reply(200, {"data": [USER], "meta": {"next_cursor": None}})
+            elif re.fullmatch(r"/api/v1/users/[^/]+/commits", path) or path == "/api/v1/starred":
+                self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
                 self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
             elif path == "/api/v1/notifications":
@@ -179,7 +193,9 @@ def handler_for(state):
                 return
             path = self.path.split("?")[0]
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", path)
-            if star:
+            if re.fullmatch(r"/api/v1/users/[^/]+/follow", path):
+                self.no_content()
+            elif star:
                 state.stars[star.group(1)] = True
                 self.reply(200, {"data": dict(COMMITS[0], starred=True, stars_count=5)})
             elif path == "/api/v1/commits":
@@ -198,7 +214,9 @@ def handler_for(state):
             if self.forced():
                 return
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", self.path.split("?")[0])
-            if star:
+            if re.fullmatch(r"/api/v1/users/[^/]+/follow", self.path):
+                self.no_content()
+            elif star:
                 state.stars[star.group(1)] = False
                 self.reply(200, {"data": dict(COMMITS[0], starred=False, stars_count=4)})
             else:

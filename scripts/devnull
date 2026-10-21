@@ -15,6 +15,11 @@ Usage: devnull <command> [arguments]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
                          a new commit on the log, or a quote of <id>
+  user <name>            a profile
+  user-commits|followers|following <name> [--cursor C]
+                         a profile's commits, or the people around it
+  starred [--cursor C]   the commits you starred
+  follow|unfollow <name> follow someone, or stop
 
 Every command prints one JSON object on stdout. A failure prints
 {"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
@@ -42,6 +47,19 @@ BASE_URL = os.environ.get("DEVNULL_URL", "https://dev-null.sh").rstrip("/")
 HOME = Path(os.environ.get("DEVNULL_HOME", Path.home() / ".local/share/omarchy-devnull"))
 KEY = HOME / "id_ed25519"
 TIMEOUT = 15
+
+
+def plugin_version():
+    """The manifest's version, so the User-Agent never drifts from the release."""
+    try:
+        manifest = Path(__file__).resolve().parent.parent / "manifest.json"
+        return json.loads(manifest.read_text()).get("version", "dev")
+    except (OSError, ValueError):
+        return "dev"
+
+
+# Cloudflare in front of dev-null.sh bans urllib's default agent (error 1010).
+USER_AGENT = f"omarchy-devnull/{plugin_version()}"
 
 # Only device_not_approved means the pairing is gone. invalid_signature shares
 # its 401 and usually means the clock is off, which re-pairing would not fix.
@@ -121,8 +139,7 @@ def call(method, path, body=None):
         "X-Devnull-Nonce": nonce,
         "X-SSH-Signature": header_signature(signature),
         "Accept": "application/json",
-        # Cloudflare in front of dev-null.sh bans urllib's default agent (error 1010).
-        "User-Agent": "omarchy-devnull/0.1.0",
+        "User-Agent": USER_AGENT,
     }
     if data:
         headers["Content-Type"] = "application/json"
@@ -189,9 +206,40 @@ def cmd_replies(commit_id, *args):
     return {"replies": replies, "next_cursor": cursor}
 
 
+def listing(path):
+    """A command for one paged list: {items, next_cursor}, like every other list."""
+    def command(*args):
+        _, cursor = paged(args)
+        items, cursor = page(path, cursor)
+        return {"items": items, "next_cursor": cursor}
+    return command
+
+
+def per_user(template):
+    """A paged list that hangs off one user, e.g. /users/{u}/commits."""
+    def command(username, *args):
+        return listing(template.format(username=urllib.parse.quote(username)))(*args)
+    return command
+
+
+def cmd_user(username):
+    return call("GET", f"/api/v1/users/{urllib.parse.quote(username)}").get("data", {})
+
+
+def cmd_follow(username):
+    # The route answers 204: what changed is what was asked.
+    call("POST", f"/api/v1/users/{urllib.parse.quote(username)}/follow")
+    return {"username": username, "is_followed": True}
+
+
+def cmd_unfollow(username):
+    call("DELETE", f"/api/v1/users/{urllib.parse.quote(username)}/follow")
+    return {"username": username, "is_followed": False}
+
+
 def cmd_notifications():
     """Listing marks every notification read, upstream, for the web and the app too.
-    Only call this when he opens the panel, never on a timer."""
+    Only call this when the panel is opened, never on a timer."""
     answer = call("GET", "/api/v1/notifications")
     return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
 
@@ -239,7 +287,11 @@ def cmd_pair(code, verifier):
 COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "notifications": cmd_notifications, "star": cmd_star,
             "unstar": cmd_unstar, "reply": cmd_reply, "replies": cmd_replies,
-            "commit": cmd_commit}
+            "commit": cmd_commit, "user": cmd_user, "follow": cmd_follow,
+            "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
+            "user-commits": per_user("/api/v1/users/{username}/commits"),
+            "followers": per_user("/api/v1/users/{username}/followers"),
+            "following": per_user("/api/v1/users/{username}/following")}
 
 
 def main():

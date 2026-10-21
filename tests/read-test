@@ -61,6 +61,18 @@ def main():
         assert code == 0 and thread["replies"][0]["author"]["username"] == "pptx704"
         assert state.last_uri == "/api/v1/commits/c1/replies"
 
+        # A profile, and every list around it, in the same {items, next_cursor} shape.
+        user, code = run("user", "pptx704")
+        assert code == 0 and user["username"] == "pptx704"
+        assert state.last_uri == "/api/v1/users/pptx704"
+        for command, route in (("user-commits", "commits"), ("followers", "followers"), ("following", "following")):
+            answer, code = run(command, "pptx704")
+            assert code == 0 and len(answer["items"]) > 0, answer
+            assert state.last_uri == f"/api/v1/users/pptx704/{route}"
+        starred, code = run("starred", "--cursor", mock_module.CURSOR)
+        assert code == 0 and starred["next_cursor"] == mock_module.CURSOR
+        assert state.last_uri == f"/api/v1/starred?cursor={mock_module.CURSOR}"
+
         # `me` does not touch notifications — the whole point of the design.
         before = state.notifications_calls
         me, code = run("me")

@@ -68,7 +68,7 @@ def authorize_url(key_path, device_name, challenge, state):
 
 # What a callback turned out to be, when it was not a code.
 IGNORE = "ignore"      # meant for something else, or empty: keep waiting
-CANCELLED = "cancelled"  # he said no on the page: stop, and say so
+CANCELLED = "cancelled"  # refused on the page: stop, and say so
 
 
 def accepts_callback(state, url):
