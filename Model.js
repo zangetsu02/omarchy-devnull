@@ -19,44 +19,31 @@ var VERBS = {
     leveled_up: "levelled you up"
 }
 
-function wrap(line, width) {
-    var out = []
-    var current = ""
-    var words = line.split(/\s+/).filter(function (w) { return w.length > 0 })
-    for (var i = 0; i < words.length; i++) {
-        var word = words[i]
-        // A word longer than the line gets broken, or it would never fit at all.
-        while (word.length > width) {
-            if (current.length > 0) { out.push(current); current = "" }
-            out.push(word.slice(0, width))
-            word = word.slice(width)
-        }
-        var candidate = current.length === 0 ? word : current + " " + word
-        if (candidate.length <= width) {
-            current = candidate
-        } else {
-            out.push(current)
-            current = word
-        }
-    }
-    if (current.length > 0) out.push(current)
-    return out
+// --- Small immutable helpers ----------------------------------------------------
+//
+// QML only redraws what it sees reassigned, so state is never edited in place:
+// these return a copy with the change applied.
+
+function merged(base, changes) {
+    var copy = {}
+    for (var key in (base || {})) copy[key] = base[key]
+    for (var change in (changes || {})) copy[change] = changes[change]
+    return copy
 }
 
-function clampBody(text, lines, width) {
-    if (!text) return ""
-    var wrapped = []
-    // Blank lines the author typed must not spend a line on nothing.
-    var sourceLines = text.split("\n")
-    for (var i = 0; i < sourceLines.length; i++) {
-        var piece = wrap(sourceLines[i], width)
-        for (var j = 0; j < piece.length; j++) wrapped.push(piece[j])
-    }
-    if (wrapped.length <= lines) return wrapped.join("\n")
-    var kept = wrapped.slice(0, lines)
-    kept[lines - 1] = kept[lines - 1] + "…"
-    return kept.join("\n")
+function without(base, dropped) {
+    var copy = {}
+    for (var key in (base || {})) if (key !== dropped) copy[key] = base[key]
+    return copy
 }
+
+// Only web links leave the shell: a link from the server is opened with
+// xdg-open, which would just as happily run any other scheme's handler.
+function webUrl(url) {
+    return /^https?:\/\//i.test(String(url || "")) ? String(url) : ""
+}
+
+// --- Commits ----------------------------------------------------------------------
 
 function rowFor(commit) {
     var author = commit.author || {}
@@ -72,6 +59,8 @@ function rowFor(commit) {
         url: commit.html_url || "",
         created: commit.created_at || "",
         name: author.name || author.username || "?",
+        username: author.username || "",
+        avatar: author.avatar_url || "",
         lane: laneOf(commit),
         deleted: !!commit.deleted_at,
         link: commit.link_preview && commit.link_preview.title ? {
@@ -101,13 +90,11 @@ function ageFor(iso, nowMs) {
     return Math.floor(minutes / 1440) + "d"
 }
 
+// One line for the popup: "@who verb: words".
 function summaryFor(notification) {
-    var verb = VERBS[notification.type] || notification.type
-    var actor = notification.actor || {}
-    var who = "@" + (actor.username || "?")
-    var commit = notification.commit || {}
-    if (!commit.body) return who + " " + verb
-    return who + " " + verb + ": " + commit.body
+    var notice = noticeFor(notification)
+    var line = "@" + (notice.actor.username || "?") + " " + notice.verb
+    return notice.body ? line + ": " + notice.body : line
 }
 
 function badgeFor(count, broken) {
@@ -134,8 +121,8 @@ function tickCalls(panelOpen, broken, expanded) {
     if (broken) return []
     // Closed, only /me: it carries the unread count without marking anything read.
     if (!panelOpen) return ["me"]
-    // Once he has paged back, refreshing would replace everything he scrolled to
-    // with page one. The feed waits until the panel is opened again.
+    // Once older pages are loaded, refreshing would replace everything scrolled
+    // to with page one. The feed waits until the panel is opened again.
     return expanded ? [] : ["feed"]
 }
 
@@ -162,16 +149,13 @@ function draftFor(drafts, id) {
 }
 
 function withDraft(drafts, id, text) {
-    var copy = {}
-    for (var key in (drafts || {})) copy[key] = drafts[key]
-    copy[id] = text
-    return copy
+    var change = {}
+    change[id] = text
+    return merged(drafts, change)
 }
 
 function clearDraft(drafts, id) {
-    var copy = {}
-    for (var key in (drafts || {})) if (key !== id) copy[key] = drafts[key]
-    return copy
+    return without(drafts, id)
 }
 
 function nextFailureCount(count, result) {
@@ -207,32 +191,41 @@ function withStar(commit, starred) {
     var count = commit.stars_count || 0
     // Every other field rides along: a thread preview or a link card must not
     // vanish because someone pressed s.
-    var copy = {}
-    for (var key in commit) copy[key] = commit[key]
-    copy.starred = starred
-    copy.stars_count = starred ? count + 1 : Math.max(0, count - 1)
-    return copy
+    return merged(commit, { starred: starred, stars_count: starred ? count + 1 : Math.max(0, count - 1) })
+}
+
+function withFollow(user, followed) {
+    if (followed === user.is_followed) return user
+    var count = user.followers_count || 0
+    return merged(user, { is_followed: followed, followers_count: followed ? count + 1 : Math.max(0, count - 1) })
 }
 
 // --- The log -----------------------------------------------------------------
 
-// The six author lanes of dev-null, taken from the Omarchy theme instead of the
-// site: burnt orange, green, violet, teal, rose, ochre, in that order.
-var LANE_KEYS = ["orange", "green", "magenta", "cyan", "red", "yellow"]
-
-function lanesFrom(colorsToml, fallback) {
-    var found = {}
-    var lines = String(colorsToml || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-        var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-        if (match) found[match[1]] = match[2]
+// dev-null's own colours, from its DESIGN.md: six author lanes (burnt orange,
+// green, violet, teal, rose, ochre), one blue for "you can act here", one red
+// for deleting. The theme still gives background, text and font; it picks the
+// dark or light set by how light its background is.
+var PALETTE = {
+    dark: {
+        lanes: ["#ff8a4c", "#51cf66", "#da77f2", "#3bc9db", "#f06595", "#fcc419"],
+        primary: "#7aa2f7",
+        destructive: "#ff6b6b"
+    },
+    light: {
+        lanes: ["#d9480f", "#2f9e44", "#9c36b5", "#0c8599", "#c2255c", "#b7791f"],
+        primary: "#3b6fe0",
+        destructive: "#c92a2a"
     }
-    return LANE_KEYS.map(function (key) { return found[key] || fallback })
+}
+
+function paletteFor(backgroundLightness) {
+    return backgroundLightness > 0.5 ? PALETTE.light : PALETTE.dark
 }
 
 function laneOf(commit) {
     var lane = ((commit && commit.author) || {}).lane
-    return typeof lane === "number" && lane >= 0 && lane < LANE_KEYS.length ? lane : 0
+    return typeof lane === "number" && lane >= 0 && lane < PALETTE.dark.lanes.length ? lane : 0
 }
 
 // The commit with this id, wherever it sits: on the log, or in a reply preview
@@ -245,11 +238,8 @@ function mapCommit(list, id, change) {
         if (commit.id === id) next = change(commit)
         else if (commit.reply_preview && commit.reply_preview.data && commit.reply_preview.data.length) {
             var inner = mapCommit(commit.reply_preview.data, id, change)
-            if (inner !== commit.reply_preview.data) {
-                next = {}
-                for (var key in commit) next[key] = commit[key]
-                next.reply_preview = { data: inner, next_cursor: commit.reply_preview.next_cursor }
-            }
+            if (inner !== commit.reply_preview.data)
+                next = merged(commit, { reply_preview: merged(commit.reply_preview, { data: inner }) })
         }
         if (next !== commit) {
             if (out === list) out = list.slice()
@@ -257,16 +247,6 @@ function mapCommit(list, id, change) {
         }
     }
     return out
-}
-
-function findCommit(list, id) {
-    for (var i = 0; i < (list || []).length; i++) {
-        var commit = list[i]
-        if (commit.id === id) return commit
-        var inner = findCommit((commit.reply_preview || {}).data, id)
-        if (inner) return inner
-    }
-    return null
 }
 
 // What the composer may still take; the site's limit, counted the same way.
@@ -279,4 +259,56 @@ function charsLeft(text) {
 // "1 reply", "3 replies": the count and the noun the site would print.
 function plural(count, one, many) {
     return count + " " + (count === 1 ? one : (many || one + "s"))
+}
+
+// --- Notifications -------------------------------------------------------------
+
+var NOTICE_ICONS = {
+    replied: "↩", mentioned: "@", quoted: "❝", starred: "★",
+    followed: "+", approved: "✓", rejected: "✗", leveled_up: "⇡"
+}
+// The colour of a notice's icon: a lane index, or one of the palette's roles.
+// Replies are blue because they ask you to act; a rejection is red.
+var NOTICE_TINTS = {
+    replied: "primary", rejected: "destructive",
+    starred: 5, quoted: 2, mentioned: 3, followed: 1, approved: 1, leveled_up: 0
+}
+
+function noticeTint(type, palette) {
+    var tint = NOTICE_TINTS[type]
+    if (typeof tint === "number") return palette.lanes[tint]
+    return tint ? palette[tint] : ""
+}
+
+// Whose words the commit under a notice are: theirs (a reply, a mention, a
+// quote) or yours (what they starred, what moderation decided on).
+var THEIR_WORDS = { replied: true, mentioned: true, quoted: true }
+
+function noticeFor(notification) {
+    var actors = notification.actors && notification.actors.length ? notification.actors : [notification.actor || {}]
+    var first = actors[0] || {}
+    var commit = notification.commit || {}
+    return {
+        icon: NOTICE_ICONS[notification.type] || "•",
+        type: notification.type,
+        actor: first,
+        others: actors.length - 1,
+        verb: VERBS[notification.type] || notification.type,
+        theirs: THEIR_WORDS[notification.type] === true,
+        body: commit.body || "",
+        reason: notification.reason || "",
+        created: notification.created_at || "",
+        unread: !notification.read_at,
+        url: commit.html_url || first.html_url || ""
+    }
+}
+
+// The last line of any list, in git's voice: still loading, what went wrong,
+// that there is more, that this is the end, or that there is nothing at all.
+function listEnd(state) {
+    if (state.loading) return "loading…"
+    if (state.error) return "fatal: " + state.error
+    if (state.more) return "older…"
+    if (state.count > 0) return state.end || "That's the root commit. There's nothing before it."
+    return state.empty || "fatal: nothing here yet"
 }

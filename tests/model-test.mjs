@@ -12,15 +12,6 @@ const Model = {}
 vm.createContext(Model)
 vm.runInContext(source, Model)
 
-// Two lines and an ellipsis, never a broken word in the middle.
-assert.equal(Model.clampBody("alpha beta gamma delta", 2, 11), "alpha beta\ngamma delta")
-assert.equal(Model.clampBody("a".repeat(400), 2, 20).split("\n").length, 2)
-assert.ok(Model.clampBody("x ".repeat(300), 2, 20).endsWith("…"))
-// Short enough to fit is left exactly as it was.
-assert.equal(Model.clampBody("ship it", 2, 20), "ship it")
-// Newlines the author typed do not get to spend both lines on nothing.
-assert.equal(Model.clampBody("one\n\n\ntwo", 2, 20), "one\ntwo")
-
 // Review Focus: an empty body still gives a row worth drawing.
 const bare = Model.rowFor({
   id: "u", short_hash: "d453634", body: "",
@@ -91,10 +82,10 @@ assert.equal(Model.withStar({ starred: false, created_at: "x" }, true).created_a
 
 console.log("Model.js: all checks passed")
 
-// Lanes come from the theme, in dev-null's order, with a fallback for gaps.
-const toml = 'orange = "#ff8800"\ngreen = "#00ff00"\nmagenta="#ff00ff"\ncyan = "#00ffff"\nred = "#ff0000"\n'
-assert.deepEqual(Array.from(Model.lanesFrom(toml, "#ffffff")),
-  ["#ff8800", "#00ff00", "#ff00ff", "#00ffff", "#ff0000", "#ffffff"])
+// The lanes are dev-null's, dark or light by the theme's background.
+assert.equal(Model.paletteFor(0.05).lanes[0], "#ff8a4c")
+assert.equal(Model.paletteFor(0.95).primary, "#3b6fe0")
+assert.equal(Model.paletteFor(0.05).lanes.length, 6)
 assert.equal(Model.laneOf({ author: { lane: 4 } }), 4)
 assert.equal(Model.laneOf({ author: { lane: 9 } }), 0)
 
@@ -115,7 +106,6 @@ assert.equal(changed[0].reply_preview.data[0].starred, true)
 assert.equal(changed[1], log[1])
 assert.equal(log[0].reply_preview.data[0].starred, false)
 assert.equal(Model.mapCommit(log, "zz", (c) => c), log)
-assert.equal(Model.findCommit(log, "a1").id, "a1")
 
 // The row carries what the log draws: lane, quote, link card, thread preview.
 const logRow = Model.rowFor({
@@ -133,3 +123,47 @@ assert.equal(Model.charsLeft("abc"), 3997)
 console.log("Model.js: log checks passed")
 assert.equal(Model.plural(1, "reply", "replies"), "1 reply")
 assert.equal(Model.plural(3, "image"), "3 images")
+
+// A grouped star: the first actor, how many others, and the words are yours.
+const notice = Model.noticeFor({
+  type: "starred", read_at: null, created_at: "2026-10-21T07:00:00Z",
+  actors: [{ username: "a" }, { username: "b" }, { username: "c" }],
+  commit: { body: "mine", html_url: "https://dev-null.sh/x" },
+})
+assert.equal(notice.actor.username, "a")
+assert.equal(notice.others, 2)
+assert.equal(notice.theirs, false)
+assert.equal(notice.unread, true)
+assert.equal(notice.icon, "★")
+// A reply carries their words; an old notice without actors still has one.
+const replied = Model.noticeFor({ type: "replied", actor: { username: "p" }, read_at: "x" })
+assert.equal(replied.theirs, true)
+assert.equal(replied.actor.username, "p")
+assert.equal(replied.others, 0)
+assert.equal(Model.listEnd({ loading: true }), "loading…")
+assert.equal(Model.listEnd({ error: "offline", more: true }), "fatal: offline")
+assert.equal(Model.listEnd({ more: true, count: 3 }), "older…")
+assert.equal(Model.listEnd({ count: 3 }), "That's the root commit. There's nothing before it.")
+assert.equal(Model.listEnd({ count: 0, empty: "fatal: no stars" }), "fatal: no stars")
+
+// Only http(s) leaves the shell through xdg-open.
+assert.equal(Model.webUrl("https://dev-null.sh/x"), "https://dev-null.sh/x")
+assert.equal(Model.webUrl("file:///etc/passwd"), "")
+assert.equal(Model.webUrl("javascript:alert(1)"), "")
+assert.equal(Model.webUrl(undefined), "")
+
+// Copies, never edits: the original stays as it was.
+const base = { a: 1, b: 2 }
+assert.deepEqual({ ...Model.merged(base, { b: 3 }) }, { a: 1, b: 3 })
+assert.deepEqual({ ...Model.without(base, "a") }, { b: 2 })
+assert.deepEqual(base, { a: 1, b: 2 })
+
+// A follow moves the count with it, and never below zero.
+assert.equal(Model.withFollow({ is_followed: false, followers_count: 2 }, true).followers_count, 3)
+assert.equal(Model.withFollow({ is_followed: true, followers_count: 0 }, false).followers_count, 0)
+
+// Notice icons take a lane or a role from the palette.
+const dark = Model.paletteFor(0)
+assert.equal(Model.noticeTint("replied", dark), dark.primary)
+assert.equal(Model.noticeTint("starred", dark), dark.lanes[5])
+assert.equal(Model.noticeTint("unknown", dark), "")
