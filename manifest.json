@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "zangetsu.devnull",
+  "name": "dev-null",
+  "version": "0.1.0",
+  "author": "Christian Palladini",
+  "license": "MIT",
+  "description": "dev-null.sh in the Omarchy bar: the Latest feed, what happened to you, a star and a reply. Everything bigger opens the website.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "dev-null",
+    "description": "The dev-null.sh feed in the bar, with an unread count. Star and reply from the panel; anything else opens the commit in the browser.",
+    "category": "Social",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 60,
+      "openRefreshIntervalSec": 20,
+      "feedLength": 50,
+      "bodyLines": 2
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Unread check while the panel is closed (seconds)",
+        "description": "Only the unread count is fetched on this timer, never the notification list: listing them marks them read on dev-null.sh and in the official app. The API allows 120 calls a minute, so this is slow by choice, not by need.",
+        "min": 30,
+        "max": 3600,
+        "step": 10,
+        "defaultValue": 60
+      },
+      {
+        "key": "openRefreshIntervalSec",
+        "type": "integer",
+        "label": "Feed refresh while the panel is open (seconds)",
+        "description": "How often the feed reloads while you are looking at it.",
+        "min": 5,
+        "max": 120,
+        "step": 5,
+        "defaultValue": 20
+      },
+      {
+        "key": "feedLength",
+        "type": "integer",
+        "label": "Commits kept in the panel",
+        "description": "How far back the panel keeps scrolling before it forgets. Each page from the server is 20.",
+        "min": 20,
+        "max": 200,
+        "step": 20,
+        "defaultValue": 50
+      },
+      {
+        "key": "bodyLines",
+        "type": "integer",
+        "label": "Lines of a commit shown in the list",
+        "description": "Longer commits are cut with an ellipsis. Click one to read it on the site.",
+        "min": 1,
+        "max": 6,
+        "step": 1,
+        "defaultValue": 2
+      }
+    ]
+  }
+}
