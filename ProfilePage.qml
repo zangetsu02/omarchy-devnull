@@ -14,6 +14,8 @@ Item {
   property string username: ""
 
   property var user: ({})
+  // Level, achievements and commit activity, from the bridge's `standing`.
+  property var standing: ({})
   // "commits", "followers" or "following".
   property string tab: "commits"
   readonly property bool isMe: username !== "" && username === view.myUsername
@@ -23,7 +25,11 @@ Item {
 
   onUsernameChanged: {
     root.user = ({ username: root.username })
+    root.standing = ({})
     root.tab = "commits"
+    if (root.username !== "") root.service.fetchStanding(root.username, function (answer) {
+      if (root.user.username === root.username) root.standing = answer
+    })
     if (root.username !== "") root.service.fetchUser(root.username, function (user) {
       // Another profile may have been opened while this one was on its way.
       if (user.username !== root.username) return
@@ -112,6 +118,12 @@ Item {
           spacing: Style.space(8)
           Rectangle { width: Style.space(8); height: width; radius: width / 2; color: root.lane; anchors.verticalCenter: parent.verticalCenter }
           Mono { text: root.handle; color: Color.muted }
+          // The level, tinted in the owner's lane, as the site prints it.
+          Chip {
+            visible: Model.standingFor(root.standing.achievements).known
+            text: Model.standingFor(root.standing.achievements).label
+            tint: root.lane
+          }
           Chip { visible: root.user.follows_you === true; text: "follows you" }
         }
       }
@@ -146,6 +158,13 @@ Item {
       ActionButton { icon: "↗"; label: "on the site"; onClicked: root.view.openOnSite(root.user.html_url) }
     }
 
+    Standing {
+      width: parent.width - parent.padding * 2
+      view: root.view
+      data: root.standing
+      lane: root.lane
+    }
+
     // The counts are the tabs: commits, followers, following.
     Row {
       spacing: Style.space(4)
@@ -173,11 +192,16 @@ Item {
 
   component Chip: Rectangle {
     property alias text: chipText.text
+    // Untinted, a quiet grey label; tinted, the colour carries it.
+    property color tint: "transparent"
+    readonly property bool tinted: tint.a > 0
     width: chipText.implicitWidth + Style.space(10)
     height: chipText.implicitHeight + Style.space(4)
     radius: Style.space(4)
-    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
-    Mono { id: chipText; anchors.centerIn: parent; color: Color.muted; font.pixelSize: Style.font.caption }
+    color: tinted ? Qt.rgba(tint.r, tint.g, tint.b, 0.14) : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
+    border.width: tinted ? 1 : 0
+    border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.5)
+    Mono { id: chipText; anchors.centerIn: parent; color: parent.tinted ? parent.tint : Color.muted; font.pixelSize: Style.font.caption }
   }
 
   component PersonRow: Item {

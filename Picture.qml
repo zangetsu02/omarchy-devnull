@@ -10,6 +10,9 @@ ClippingRectangle {
   property alias source: image.source
   property alias fillMode: image.fillMode
   readonly property bool ready: image.status === Image.Ready
+  // Said in the box when the picture cannot load; avatars leave it empty and
+  // draw their own initial instead.
+  property string missingText: ""
 
   color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
 
@@ -22,5 +25,12 @@ ClippingRectangle {
     fillMode: Image.PreserveAspectCrop
     asynchronous: true
     cache: true
+  }
+
+  Mono {
+    anchors.centerIn: parent
+    visible: image.status === Image.Error && root.missingText !== ""
+    text: root.missingText
+    color: Color.muted
   }
 }

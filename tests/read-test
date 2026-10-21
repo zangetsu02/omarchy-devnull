@@ -66,6 +66,13 @@ def main():
         assert code == 0 and state.last_uri == "/api/v1/commits/r1"
         assert [c["short_hash"] for c in page["items"]] == ["d453634", "0000001"]
 
+        # Standing comes from the public profile page, unsigned, as one object.
+        standing, code = run("standing", "pptx704")
+        assert code == 0 and state.last_uri == "/@pptx704", standing
+        assert standing["achievements"]["rank"] == "operator"
+        assert standing["activity"]["buckets"][0]["count"] == 2
+        assert standing["streaks"]["current"] == 1
+
         # A profile, and every list around it, in the same {items, next_cursor} shape.
         user, code = run("user", "pptx704")
         assert code == 0 and user["username"] == "pptx704"
