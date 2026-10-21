@@ -17,6 +17,7 @@ Usage: devnull <command> [arguments]
                          a new commit on the log, or a quote of <id>
   show <id>              a commit, after the commits it replies to
   user <name>            a profile
+  standing <name>        its level, achievements, commit activity and streaks
   user-commits|followers|following <name> [--cursor C]
                          a profile's commits, or the people around it
   starred [--cursor C]   the commits you starred
@@ -30,6 +31,7 @@ in the "devnull-api" namespace, which is the only thing that signature is
 good for: it cannot sign a git commit or log in anywhere.
 """
 
+import html
 import json
 import os
 import re
@@ -230,6 +232,36 @@ def cmd_show(commit_id):
     return {"items": answer.get("ancestors", []) + [answer.get("data", {})], "next_cursor": None}
 
 
+# Level, achievements and commit activity are not in the API: the site draws
+# them from the profile page's own data, which an Inertia page embeds in its
+# HTML. That page is public, so this request is not signed.
+PAGE_DATA = re.compile(r'<script data-page="app" type="application/json">(.*?)</script>', re.S)
+
+
+def cmd_standing(username):
+    """A profile's level, rank, XP, achievements, commit activity and streaks."""
+    request = urllib.request.Request(
+        f"{BASE_URL}/@{urllib.parse.quote(username)}",
+        headers={"Accept": "text/html", "User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            page = response.read().decode()
+    except urllib.error.HTTPError as error:
+        raise BridgeError(error.reason, classify(error.code, None, error.reason)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(error.reason), "network") from error
+    match = PAGE_DATA.search(page)
+    if not match:
+        raise BridgeError("The profile page has changed shape; standing is unavailable.", "http")
+    props = json.loads(html.unescape(match.group(1))).get("props", {})
+    return {
+        "achievements": props.get("achievements") or {},
+        "activity": props.get("activity") or {},
+        "streaks": props.get("streaks") or {},
+    }
+
+
 def cmd_user(username):
     return call("GET", f"/api/v1/users/{urllib.parse.quote(username)}").get("data", {})
 
@@ -295,7 +327,8 @@ def cmd_pair(code, verifier):
 COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "notifications": cmd_notifications, "star": cmd_star,
             "unstar": cmd_unstar, "reply": cmd_reply, "replies": cmd_replies,
-            "commit": cmd_commit, "show": cmd_show, "user": cmd_user, "follow": cmd_follow,
+            "commit": cmd_commit, "show": cmd_show, "user": cmd_user,
+            "standing": cmd_standing, "follow": cmd_follow,
             "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
             "user-commits": per_user("/api/v1/users/{username}/commits"),
             "followers": per_user("/api/v1/users/{username}/followers"),

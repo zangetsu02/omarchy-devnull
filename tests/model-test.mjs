@@ -201,3 +201,29 @@ assert.equal(Model.summaryFor({ type: "leveled_up", actor: { username: "zangetsu
 // Anything interpolated into a StyledText label is escaped first.
 assert.equal(Model.escapeHtml("<img src=x>&"), "&lt;img src=x&gt;&amp;")
 assert.equal(Model.colored("<b>", "#fff"), "<font color='#fff'>&lt;b&gt;</font>")
+
+// Standing: the label, the progress, the next rank, unlocked badges first.
+const standing = Model.standingFor({
+  level: 3, rank: "operator", xp: 280, next_level_xp: 400, level_progress: 52,
+  ranks: [{ rank: "operator", achieved: true }, { rank: "maintainer", achieved: false }],
+  badges: [{ id: "a", icon: "star", unlocked: false }, { id: "b", icon: "terminal", unlocked: true }, { id: "c", icon: "?", unlocked: false }],
+})
+assert.equal(standing.label, "Lv. 3 · operator")
+assert.equal(standing.toNext, "120 XP to maintainer")
+assert.equal(standing.progress, 0.52)
+assert.equal(standing.badges[0].id, "b")
+assert.equal(standing.unlocked, 1)
+assert.equal(standing.badges[2].glyph, "•")
+assert.equal(Model.standingFor({}).known, false)
+
+// Activity: levels relative to the busiest bucket, labels by scale, a total.
+const day = { scale: "day", buckets: [
+  { date: "2026-10-21T06:00:00", count: 0 }, { date: "2026-10-21T07:00:00", count: 1 },
+  { date: "2026-10-21T08:00:00", count: 4 },
+] }
+const cells = Model.activityCells(day)
+assert.deepEqual(cells.map((c) => c.level), [0, 1, 4])
+assert.deepEqual(cells.map((c) => c.label), ["06:00", "", ""])
+assert.equal(Model.activitySummary(day), "5 commits in the last 24 hours")
+assert.equal(Model.activitySummary({ scale: "week", buckets: [] }), "No commits yet")
+assert.equal(Model.activityCells({ scale: "week", buckets: [{ date: "2026-10-15T00:00:00", count: 2 }] })[0].label, "Thu 15")

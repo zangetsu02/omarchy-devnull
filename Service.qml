@@ -188,6 +188,11 @@ QtObject {
     })
   }
 
+  // A profile's level, achievements and commit activity, handed to `done`.
+  function fetchStanding(username, done) {
+    root.run(["standing", username], function (answer) { if (!answer.error) done(answer) })
+  }
+
   // A profile, handed to `done` once it lands.
   function fetchUser(username, done) {
     root.run(["user", username], function (answer) { if (!answer.error) done(answer) })

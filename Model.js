@@ -365,3 +365,75 @@ function listEnd(state) {
     if (state.count > 0) return state.end || "That's the root commit. There's nothing before it."
     return state.empty || "fatal: nothing here yet"
 }
+
+// --- Standing: level, achievements, commit activity ----------------------------
+
+// The site's Lucide icons, as the same drawings in the Nerd Font.
+var BADGE_ICONS = {
+    "terminal": "\u{f018d}", "file-code": "\u{f022e}", "flame": "\u{f0238}", "zap": "\u{f140b}",
+    "server": "\u{f048b}", "box": "\u{f03d6}", "shield": "\u{f0498}", "star": "\u{f04ce}",
+    "sparkles": "\u{f0674}", "git-merge": "\u{f062d}", "key": "\u{f0306}", "cookie": "\u{f0198}",
+    "bot-off": "\u{f06a9}", "bomb": "\u{f0691}"
+}
+var TROPHY = "\u{f0538}"
+
+// Where a profile stands: "Lv. 3 · operator", how far into the level it is,
+// what the next rank is, and its badges with the unlocked ones first.
+function standingFor(achievements) {
+    var a = achievements || {}
+    var ranks = a.ranks || []
+    var next = ranks.filter(function (r) { return !r.achieved })[0] || null
+    var badges = (a.badges || []).map(function (badge) {
+        return merged(badge, { glyph: BADGE_ICONS[badge.icon] || "•" })
+    })
+    var unlocked = badges.filter(function (b) { return b.unlocked })
+    return {
+        known: typeof a.level === "number",
+        label: "Lv. " + (a.level || 0) + " · " + (a.rank || "?"),
+        xp: a.xp || 0,
+        nextXp: a.next_level_xp || 0,
+        progress: Math.max(0, Math.min(1, (a.level_progress || 0) / 100)),
+        toNext: next ? Math.max(0, (a.next_level_xp || 0) - (a.xp || 0)) + " XP to " + next.rank : "top rank",
+        badges: unlocked.concat(badges.filter(function (b) { return !b.unlocked })),
+        unlocked: unlocked.length
+    }
+}
+
+var WINDOWS = { day: "the last 24 hours", week: "the last 7 days", month: "the last 30 days", year: "the last year" }
+var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+// Each bucket of the activity graph, with how full it looks (0 empty, 1 to 4
+// relative to the busiest bucket, as the site draws it) and its label, if any:
+// every six hours for a day, every day for a week, Mondays for a month.
+function activityCells(activity) {
+    var buckets = (activity && activity.buckets) || []
+    var scale = (activity && activity.scale) || "day"
+    var busiest = buckets.reduce(function (most, b) { return Math.max(most, b.count || 0) }, 0)
+    return buckets.map(function (bucket) {
+        var count = bucket.count || 0
+        var when = new Date(bucket.date)
+        return {
+            count: count,
+            level: count === 0 || busiest === 0 ? 0 : Math.max(1, Math.ceil(count / busiest * 4)),
+            label: activityLabel(when, scale)
+        }
+    })
+}
+
+function activityLabel(when, scale) {
+    if (isNaN(when.getTime())) return ""
+    if (scale === "day") return when.getHours() % 6 === 0 ? pad2(when.getHours()) + ":00" : ""
+    if (scale === "week") return WEEKDAYS[when.getDay()] + " " + when.getDate()
+    if (scale === "month") return when.getDay() === 1 ? MONTHS[when.getMonth()] + " " + when.getDate() : ""
+    return ""
+}
+
+function pad2(n) { return n < 10 ? "0" + n : String(n) }
+
+// "9 commits in the last 24 hours", or the site's line for an empty graph.
+function activitySummary(activity) {
+    var total = ((activity && activity.buckets) || []).reduce(function (sum, b) { return sum + (b.count || 0) }, 0)
+    if (total === 0) return "No commits yet"
+    return plural(total, "commit") + " in " + (WINDOWS[(activity && activity.scale) || "day"] || WINDOWS.day)
+}

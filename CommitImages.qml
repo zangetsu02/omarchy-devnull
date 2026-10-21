@@ -34,6 +34,7 @@ Item {
         height: root.single ? root.fitted.height : Math.round(root.cell * 0.62)
         radius: Style.space(6)
         source: modelData.url
+        missingText: "picture unavailable"
         // The border sits on top, so it frames the picture rather than the wash.
         Rectangle {
           anchors.fill: parent
