@@ -15,6 +15,16 @@ QtObject {
   property var commits: []
   property var notifications: []
   property string nextCursor: ""
+  property string username: ""
+  // /me's user, for the profile line beside the log: name, lane, counts.
+  property var me: ({})
+  // Which log the feed shows: latest, following or trending.
+  property string log: "latest"
+  // Threads opened in place, by commit id: { replies, nextCursor, loading }.
+  property var threads: ({})
+  property string commitStatus: ""
+  // When the feed last landed, for the "updated …" line under the list.
+  property string updatedAt: ""
   property bool loading: true
   property bool broken: false
   property string lastError: ""
@@ -61,17 +71,29 @@ QtObject {
   function dispatch(name) {
     if (name === "me") {
       root.run(["me"], function (answer) {
-        if (!answer.error) root.unreadCount = answer.unread_notifications_count || 0
+        if (!answer.error) {
+          root.unreadCount = answer.unread_notifications_count || 0
+          root.username = (answer.data || {}).username || root.username
+          if (answer.data) root.me = answer.data
+        }
         root.loading = false
       })
     } else if (name === "feed") {
-      root.run(["feed"], function (answer) {
+      var asked = root.log
+      root.run(["feed", "--log", asked], function (answer) {
+        // A tab switched while this was in flight: its own call is on the way.
+        if (asked !== root.log) return
         if (!answer.error) {
           root.commits = answer.commits || []
           root.nextCursor = answer.next_cursor || ""
           root.expanded = false
+          root.updatedAt = new Date().toISOString()
         }
         root.loading = false
+      })
+    } else if (name === "profile") {
+      root.run(["me"], function (answer) {
+        if (!answer.error && answer.data) root.me = answer.data
       })
     } else if (name === "notifications") {
       root.run(["notifications"], function (answer) {
@@ -114,41 +136,98 @@ QtObject {
 
   function loadMore() {
     if (!root.nextCursor || root.broken) return
-    root.run(["feed", "--cursor", root.nextCursor], function (answer) {
-      if (answer.error) return
+    var asked = root.log
+    root.run(["feed", "--log", asked, "--cursor", root.nextCursor], function (answer) {
+      if (answer.error || asked !== root.log) return
       root.commits = root.commits.concat(answer.commits || [])
       root.nextCursor = answer.next_cursor || ""
       root.expanded = true
     })
   }
 
-  function commitIndex(id) {
-    for (var i = 0; i < root.commits.length; i++) if (root.commits[i].id === id) return i
-    return -1
+  function switchLog(log) {
+    if (log === root.log) return
+    root.log = log
+    root.commits = []
+    root.nextCursor = ""
+    root.expanded = false
+    root.threads = ({})
+    root.dispatch("feed")
   }
 
-  function replaceCommit(index, commit) {
-    var copy = root.commits.slice()
-    copy[index] = commit
-    root.commits = copy
+  // A commit changed wherever it is drawn: on the log, in a preview, in a thread.
+  function changeCommit(id, change) {
+    root.commits = Model.mapCommit(root.commits, id, change)
+    var next = ({})
+    for (var key in root.threads) {
+      var thread = root.threads[key]
+      next[key] = { replies: Model.mapCommit(thread.replies, id, change),
+                    nextCursor: thread.nextCursor, loading: thread.loading }
+    }
+    root.threads = next
+  }
+
+  function findCommit(id) {
+    var found = Model.findCommit(root.commits, id)
+    for (var key in root.threads) found = found || Model.findCommit(root.threads[key].replies, id)
+    return found
   }
 
   function toggleStar(id) {
-    var index = root.commitIndex(id)
-    if (index < 0) return
-    var original = root.commits[index]
+    var original = root.findCommit(id)
+    if (!original) return
     var wanted = !original.starred
     // Applied first so the tap feels immediate, put back if the server refuses.
-    root.replaceCommit(index, Model.withStar(original, wanted))
+    root.changeCommit(id, function (c) { return Model.withStar(c, wanted) })
     root.run([wanted ? "star" : "unstar", id], function (answer) {
-      var at = root.commitIndex(id)
-      if (at < 0) return
-      if (answer.error) root.replaceCommit(at, original)
-      else if (answer.stars_count !== undefined) {
-        var fresh = Model.withStar(root.commits[at], answer.starred === true)
+      if (answer.error) root.changeCommit(id, function (c) { return Model.withStar(c, !wanted) })
+      else if (answer.stars_count !== undefined) root.changeCommit(id, function (c) {
+        var fresh = Model.withStar(c, answer.starred === true)
         fresh.stars_count = answer.stars_count
-        root.replaceCommit(at, fresh)
+        return fresh
+      })
+    })
+  }
+
+  // Opens a thread in place, or closes it when it is open.
+  function toggleThread(id) {
+    var next = ({})
+    for (var key in root.threads) if (key !== id) next[key] = root.threads[key]
+    if (root.threads[id]) { root.threads = next; return }
+    next[id] = { replies: [], nextCursor: "", loading: true }
+    root.threads = next
+    root.loadThread(id, "")
+  }
+
+  function loadThread(id, cursor) {
+    root.run(cursor ? ["replies", id, "--cursor", cursor] : ["replies", id], function (answer) {
+      var thread = root.threads[id]
+      if (!thread) return
+      var next = ({})
+      for (var key in root.threads) next[key] = root.threads[key]
+      next[id] = {
+        replies: answer.error ? thread.replies : thread.replies.concat(answer.replies || []),
+        nextCursor: answer.error ? "" : (answer.next_cursor || ""),
+        loading: false
       }
+      root.threads = next
+    })
+  }
+
+  signal commitDone(var answer)
+
+  // A new commit, or a quote when quotedId is set. The log reloads once it lands.
+  function postCommit(body, quotedId) {
+    root.commitStatus = ""
+    var args = quotedId ? ["commit", body, "--quote", quotedId] : ["commit", body]
+    root.run(args, function (answer) {
+      if (answer.error) root.commitStatus = Model.errorLine(answer)
+      else {
+        root.commitStatus = "[log " + (answer.short_hash || "") + "] " + String(answer.body || body).split("\n")[0]
+          + (answer.status === "pending" ? "  (held for moderation)" : "")
+        root.dispatch("feed")
+      }
+      root.commitDone(answer)
     })
   }
 
@@ -158,6 +237,11 @@ QtObject {
       if (answer.error) root.replyStatus = Model.errorLine(answer)
       else if (answer.status === "pending") root.replyStatus = "Sent — held for moderation."
       else root.replyStatus = "Sent."
+      // The reply shows up where it was written: reload that thread if it is open.
+      if (!answer.error && root.threads[id]) {
+        root.toggleThread(id)
+        root.toggleThread(id)
+      }
       root.replyDone(id, answer)
     })
   }

@@ -79,4 +79,57 @@ assert.equal(Model.pollDelay(true, {}), 20000)
 // A value below the manifest's floor is clamped, not obeyed.
 assert.equal(Model.pollDelay(false, { refreshIntervalSec: 1 }), 30000)
 
+// The age next to a commit, as the site prints it.
+const t0 = Date.parse("2026-10-21T07:00:00Z")
+assert.equal(Model.ageFor("2026-10-21T07:00:00Z", t0 + 30000), "now")
+assert.equal(Model.ageFor("2026-10-21T07:00:00Z", t0 + 7 * 60000), "7m")
+assert.equal(Model.ageFor("2026-10-21T07:00:00Z", t0 + 3 * 3600000), "3h")
+assert.equal(Model.ageFor("2026-10-21T07:00:00Z", t0 + 50 * 3600000), "2d")
+assert.equal(Model.ageFor("", t0), "")
+// A star must not lose the date, or the row forgets how old it is.
+assert.equal(Model.withStar({ starred: false, created_at: "x" }, true).created_at, "x")
+
 console.log("Model.js: all checks passed")
+
+// Lanes come from the theme, in dev-null's order, with a fallback for gaps.
+const toml = 'orange = "#ff8800"\ngreen = "#00ff00"\nmagenta="#ff00ff"\ncyan = "#00ffff"\nred = "#ff0000"\n'
+assert.deepEqual(Array.from(Model.lanesFrom(toml, "#ffffff")),
+  ["#ff8800", "#00ff00", "#ff00ff", "#00ffff", "#ff0000", "#ffffff"])
+assert.equal(Model.laneOf({ author: { lane: 4 } }), 4)
+assert.equal(Model.laneOf({ author: { lane: 9 } }), 0)
+
+// A star keeps everything else the commit carried.
+const rich = { id: "a", starred: false, stars_count: 1, reply_preview: { data: [] }, link_preview: { title: "t" } }
+const starred = Model.withStar(rich, true)
+assert.equal(starred.stars_count, 2)
+assert.equal(starred.link_preview.title, "t")
+assert.equal(rich.starred, false)
+
+// A reply inside a preview is found and changed; untouched rows stay the same objects.
+const log = [
+  { id: "a", reply_preview: { data: [{ id: "a1", starred: false, stars_count: 0 }], next_cursor: null } },
+  { id: "b" },
+]
+const changed = Model.mapCommit(log, "a1", (c) => Model.withStar(c, true))
+assert.equal(changed[0].reply_preview.data[0].starred, true)
+assert.equal(changed[1], log[1])
+assert.equal(log[0].reply_preview.data[0].starred, false)
+assert.equal(Model.mapCommit(log, "zz", (c) => c), log)
+assert.equal(Model.findCommit(log, "a1").id, "a1")
+
+// The row carries what the log draws: lane, quote, link card, thread preview.
+const logRow = Model.rowFor({
+  id: "q", author: { username: "u", name: "U", lane: 2 },
+  link_preview: { title: "Bref", url: "https://www.bref.sh/news" },
+  quoted_commit: { id: "o", short_hash: "abc1234", author: { username: "o" }, body: "orig" },
+  reply_preview: { data: [{ id: "r" }] },
+})
+assert.equal(logRow.lane, 2)
+assert.equal(logRow.link.site, "bref.sh")
+assert.equal(logRow.quoted.hash, "abc1234")
+assert.equal(logRow.preview.length, 1)
+assert.equal(Model.charsLeft("abc"), 3997)
+
+console.log("Model.js: log checks passed")
+assert.equal(Model.plural(1, "reply", "replies"), "1 reply")
+assert.equal(Model.plural(3, "image"), "3 images")
