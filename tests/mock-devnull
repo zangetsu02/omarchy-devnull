@@ -176,6 +176,8 @@ def handler_for(state):
                 self.reply(200, {"data": [USER], "meta": {"next_cursor": None}})
             elif re.fullmatch(r"/api/v1/users/[^/]+/commits", path) or path == "/api/v1/starred":
                 self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+", path):
+                self.reply(200, {"data": REPLIES[0], "ancestors": [COMMITS[0]]})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
                 self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
             elif path == "/api/v1/notifications":

@@ -40,9 +40,11 @@ Item {
 
   // --- State --------------------------------------------------------------------
 
-  // "log", "notifications", "starred" or "profile".
+  // "log", "notifications", "starred", "profile" or "commit"; the last two
+  // take an argument, the username or the commit id.
   property string page: "log"
   property string profileName: ""
+  property string commitId: ""
   property var history: []
   property string replyingTo: ""
   // Per commit id, not per row: the feed is replaced on every refresh.
@@ -61,6 +63,7 @@ Item {
   readonly property var activeList: page === "log" ? logList
     : page === "starred" ? starredList
     : page === "profile" && profilePage.tab === "commits" ? profilePage.commitList
+    : page === "commit" ? commitPage.commitList
     : null
   readonly property var selectedCommit: activeList ? activeList.selectedCommit : null
 
@@ -124,6 +127,7 @@ Item {
     say("Copied link to " + row.hash, false)
   }
   function openProfile(username) { if (username) goTo("profile", username) }
+  function openCommit(id) { if (id) goTo("commit", id) }
   function showImages(images, index) { viewer.show(images, index) }
   function say(text, failed) {
     status = text
@@ -133,20 +137,24 @@ Item {
 
   // --- Navigation: a page, and the way back ----------------------------------------
 
-  function goTo(name, username) {
-    if (name === page && (name !== "profile" || username === profileName)) return
-    history = history.concat([{ page: page, username: profileName }])
-    show(name, username)
+  function argumentOf(name) {
+    return name === "profile" ? profileName : name === "commit" ? commitId : ""
+  }
+  function goTo(name, argument) {
+    if (name === page && argument === argumentOf(page)) return
+    history = history.concat([{ page: page, argument: argumentOf(page) }])
+    show(name, argument)
   }
   function back() {
     if (history.length === 0) return
     var last = history[history.length - 1]
     history = history.slice(0, -1)
-    show(last.page, last.username)
+    show(last.page, last.argument)
   }
-  function show(name, username) {
+  function show(name, argument) {
     page = name
-    if (name === "profile") profileName = username || myUsername
+    if (name === "profile") profileName = argument || myUsername
+    if (name === "commit") commitId = argument
     if (name === "starred") starred.args = ["starred"]
     replyingTo = ""
     scope.forceActiveFocus()
@@ -193,7 +201,8 @@ Item {
     "o": function (list, c) { root.toggleThread(c.id) },
     "y": function (list, c) { root.copyLink(Model.rowFor(c)) },
     "p": function (list, c) { root.openProfile(Model.rowFor(c).username) },
-    "\r": function (list, c) { root.openOnSite(c.html_url) }
+    "\r": function (list, c) { root.openCommit(c.id) },
+    "O": function (list, c) { root.openOnSite(c.html_url) }
   })
   readonly property var pageKeys: ({
     "1": function () { root.goTo("log", ""); feed.switchLog("following") },
@@ -400,6 +409,17 @@ Item {
           service: feed
           username: root.profileName
         }
+
+        // --- One commit ------------------------------------------------------------
+
+        CommitPage {
+          id: commitPage
+          anchors.fill: parent
+          visible: root.page === "commit"
+          view: root
+          service: feed
+          commitId: root.commitId
+        }
       }
 
       // --- You, and the keys ------------------------------------------------------
@@ -439,7 +459,7 @@ Item {
           model: [
             ["j k", "move"], ["1 2 3", "following · latest · trending"], ["o", "replies"],
             ["s", "star"], ["r", "reply"], ["q", "quote"], ["c", "new commit"], ["p", "author's profile"],
-            ["y", "copy link"], ["enter", "open on the site"], ["g l n s p", "log · notif. · starred · you"],
+            ["y", "copy link"], ["enter", "the commit"], ["O", "open on the site"], ["g l n s p", "log · notif. · starred · you"],
             ["⌫", "back"], ["R", "refresh"], ["esc", "close"]
           ]
           Row {
@@ -482,7 +502,7 @@ Item {
           anchors.rightMargin: Style.space(14)
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.StyledText
-          text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page) + "</font>"
+          text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page === "commit" && commitPage.focused ? "commit " + commitPage.focused.short_hash : root.page) + "</font>"
             + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
         }
       }

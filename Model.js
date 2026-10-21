@@ -16,7 +16,7 @@ var VERBS = {
     followed: "followed you",
     approved: "approved your commit",
     rejected: "rejected your commit",
-    leveled_up: "levelled you up"
+    leveled_up: "levelled up"
 }
 
 // Action icons from the Nerd Font Omarchy ships as its monospace font: one
@@ -123,6 +123,7 @@ function ageFor(iso, nowMs) {
 // One line for the popup: "@who verb: words".
 function summaryFor(notification) {
     var notice = noticeFor(notification)
+    if (notice.aboutYou) return "You " + notice.verb
     var line = "@" + (notice.actor.username || "?") + " " + notice.verb
     return notice.body ? line + ": " + notice.body : line
 }
@@ -324,13 +325,25 @@ function noticeFor(notification) {
         actor: first,
         others: actors.length - 1,
         verb: VERBS[notification.type] || notification.type,
+        // A level-up has no one else in it: its "actor" is you.
+        aboutYou: notification.type === "leveled_up",
         theirs: THEIR_WORDS[notification.type] === true,
         body: commit.body || "",
         reason: notification.reason || "",
         created: notification.created_at || "",
         unread: !notification.read_at,
-        url: commit.html_url || first.html_url || ""
+        commitId: commit.id || ""
     }
+}
+
+// Where a click on a notice goes when it does not land on a name or a commit:
+// a follow to the follower, a level-up to your own profile, anything else to
+// the commit it is about. { page, argument }, or null when there is nowhere.
+function noticeTarget(notice, myUsername) {
+    if (notice.type === "followed") return { page: "profile", argument: notice.actor.username || "" }
+    if (notice.type === "leveled_up") return { page: "profile", argument: myUsername }
+    if (notice.commitId) return { page: "commit", argument: notice.commitId }
+    return null
 }
 
 // The last line of any list, in git's voice: still loading, what went wrong,

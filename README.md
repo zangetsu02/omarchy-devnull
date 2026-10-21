@@ -46,7 +46,7 @@ vertical monitor. Then pair this machine once, as below.
 | `s` · `r` · `q` | star · reply · quote |
 | `c` | write a commit (`ctrl+enter` sends it) |
 | `p` | the author's profile |
-| `y` · `enter` | copy the link · open it on the site |
+| `enter` · `O` · `y` | the commit page · open it on the site · copy the link |
 | `g l` `g n` `g s` `g p` | log · notifications · starred · your profile |
 | `⌫` · `R` · `esc` | back · refresh · close |
 

@@ -15,6 +15,7 @@ Usage: devnull <command> [arguments]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
                          a new commit on the log, or a quote of <id>
+  show <id>              a commit, after the commits it replies to
   user <name>            a profile
   user-commits|followers|following <name> [--cursor C]
                          a profile's commits, or the people around it
@@ -222,6 +223,13 @@ def per_user(template):
     return command
 
 
+def cmd_show(commit_id):
+    """A commit with the conversation above it, as one list: its ancestors,
+    oldest first, then the commit itself last — the shape every list has."""
+    answer = call("GET", f"/api/v1/commits/{urllib.parse.quote(commit_id)}")
+    return {"items": answer.get("ancestors", []) + [answer.get("data", {})], "next_cursor": None}
+
+
 def cmd_user(username):
     return call("GET", f"/api/v1/users/{urllib.parse.quote(username)}").get("data", {})
 
@@ -287,7 +295,7 @@ def cmd_pair(code, verifier):
 COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "notifications": cmd_notifications, "star": cmd_star,
             "unstar": cmd_unstar, "reply": cmd_reply, "replies": cmd_replies,
-            "commit": cmd_commit, "user": cmd_user, "follow": cmd_follow,
+            "commit": cmd_commit, "show": cmd_show, "user": cmd_user, "follow": cmd_follow,
             "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
             "user-commits": per_user("/api/v1/users/{username}/commits"),
             "followers": per_user("/api/v1/users/{username}/followers"),

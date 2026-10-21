@@ -188,3 +188,12 @@ assert.deepEqual({ ...Model.fitImage({ width: 900, height: 1600 }, 400, 320) }, 
 assert.deepEqual({ ...Model.fitImage({ width: 100, height: 50 }, 400, 300) }, { width: 100, height: 50 })
 // Every action icon is one Nerd Font glyph from a private use area.
 for (const glyph of Object.values(Model.ICONS)) assert.ok(glyph.codePointAt(0) >= 0xe000, glyph)
+
+// A click on a notice goes to the follower, to you, or to the commit.
+assert.deepEqual({ ...Model.noticeTarget(Model.noticeFor({ type: "followed", actor: { username: "f" } }), "me") },
+  { page: "profile", argument: "f" })
+assert.deepEqual({ ...Model.noticeTarget(Model.noticeFor({ type: "leveled_up" }), "me") }, { page: "profile", argument: "me" })
+assert.deepEqual({ ...Model.noticeTarget(Model.noticeFor({ type: "replied", commit: { id: "c1" } }), "me") },
+  { page: "commit", argument: "c1" })
+assert.equal(Model.noticeTarget(Model.noticeFor({ type: "approved" }), "me"), null)
+assert.equal(Model.summaryFor({ type: "leveled_up", actor: { username: "zangetsu02" } }), "You levelled up")

@@ -19,6 +19,23 @@ Item {
 
   implicitHeight: body.implicitHeight + pad * 2
 
+  // A click anywhere else on the row does the notice's natural thing. It sits
+  // under everything, and the MouseAreas above take their own clicks first.
+  Clickable { id: rowArea; anchors.fill: parent; onClicked: root.openTarget() }
+
+  // The whole row lights up: it is one click away from where it leads.
+  Rectangle {
+    anchors.fill: parent
+    anchors.leftMargin: root.railWidth
+    visible: rowArea.containsMouse
+    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
+  }
+
+  function openTarget() {
+    var target = Model.noticeTarget(root.notice, root.view.myUsername)
+    if (target) root.view.goTo(target.page, target.argument)
+  }
+
   Rectangle {
     x: root.railWidth / 2 - 1
     width: 2
@@ -73,7 +90,8 @@ Item {
             size: Style.space(26)
             source: modelData.avatar_url || ""
             name: modelData.name || modelData.username || ""
-            TapHandler { onTapped: root.view.openProfile(modelData.username) }
+            clickable: true
+            onClicked: root.view.openProfile(modelData.username)
           }
         }
       }
@@ -85,33 +103,61 @@ Item {
       }
     }
 
-    Mono {
+    // Who did it is its own link to their profile; the rest of the sentence is not.
+    Flow {
       width: body.width
-      textFormat: Text.StyledText
-      wrapMode: Text.Wrap
-      font.pixelSize: Style.font.body
-      text: "<b>" + root.view.esc(root.notice.actor.name || root.notice.actor.username) + "</b> "
-        + root.view.dimmed(root.notice.others > 0 ? "and " + Model.plural(root.notice.others, "other") : "@" + (root.notice.actor.username || "?"))
-        + " " + root.view.esc(root.notice.verb)
+      spacing: Style.space(6)
+      Mono {
+        visible: root.notice.aboutYou
+        text: "You"
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+      LinkText {
+        visible: !root.notice.aboutYou
+        text: root.notice.actor.name || root.notice.actor.username || "?"
+        font.pixelSize: Style.font.body
+        font.bold: true
+        onClicked: root.view.openProfile(root.notice.actor.username)
+      }
+      Mono {
+        visible: !root.notice.aboutYou
+        text: root.notice.others > 0 ? "and " + Model.plural(root.notice.others, "other") : "@" + (root.notice.actor.username || "?")
+        color: Color.muted
+        font.pixelSize: Style.font.body
+      }
+      Mono { text: root.notice.verb; font.pixelSize: Style.font.body }
     }
 
-    Mono {
+    // Their words, as a block that lights up: it opens the commit they are in.
+    Rectangle {
       visible: root.notice.theirs && root.notice.body !== ""
       width: body.width
-      text: root.notice.body
-      font.pixelSize: Style.font.body
-      wrapMode: Text.WrapAnywhere
-      maximumLineCount: 4
-      elide: Text.ElideRight
+      height: theirs.implicitHeight + Style.space(8)
+      x: -Style.space(6)
+      radius: Style.space(6)
+      color: theirsArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.07) : "transparent"
+      Mono {
+        id: theirs
+        x: Style.space(6)
+        y: Style.space(4)
+        width: parent.width - Style.space(12)
+        text: root.notice.body
+        font.pixelSize: Style.font.body
+        wrapMode: Text.WrapAnywhere
+        maximumLineCount: 4
+        elide: Text.ElideRight
+      }
+      Clickable { id: theirsArea; anchors.fill: parent; onClicked: root.view.openCommit(root.notice.commitId) }
     }
 
     Rectangle {
       visible: !root.notice.theirs && root.notice.body !== ""
       width: body.width
       height: own.implicitHeight + Style.space(12)
-      color: "transparent"
+      color: ownArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05) : "transparent"
       border.width: 1
-      border.color: root.view.railColor
+      border.color: ownArea.containsMouse ? Color.muted : root.view.railColor
       radius: Style.space(6)
       Mono {
         id: own
@@ -124,6 +170,7 @@ Item {
         maximumLineCount: 3
         elide: Text.ElideRight
       }
+      Clickable { id: ownArea; anchors.fill: parent; onClicked: root.view.openCommit(root.notice.commitId) }
     }
 
     Mono {
@@ -135,10 +182,10 @@ Item {
     }
   }
 
-  HoverHandler { cursorShape: Qt.PointingHandCursor }
-  TapHandler {
-    onTapped: root.notice.type === "followed"
-      ? root.view.openProfile(root.notice.actor.username)
-      : root.view.openOnSite(root.notice.url)
+  // A MouseArea, not a TapHandler: it keeps the click, so a name inside the row
+  // opens the profile without the row behind it also opening the commit.
+  component Clickable: MouseArea {
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
   }
 }

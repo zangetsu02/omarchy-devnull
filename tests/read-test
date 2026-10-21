@@ -61,6 +61,11 @@ def main():
         assert code == 0 and thread["replies"][0]["author"]["username"] == "pptx704"
         assert state.last_uri == "/api/v1/commits/c1/replies"
 
+        # A commit comes after the commits it replies to, as one list.
+        page, code = run("show", "r1")
+        assert code == 0 and state.last_uri == "/api/v1/commits/r1"
+        assert [c["short_hash"] for c in page["items"]] == ["d453634", "0000001"]
+
         # A profile, and every list around it, in the same {items, next_cursor} shape.
         user, code = run("user", "pptx704")
         assert code == 0 and user["username"] == "pptx704"

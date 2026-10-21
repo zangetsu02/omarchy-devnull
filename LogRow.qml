@@ -87,8 +87,8 @@ Item {
     size: root.avatarSize
     source: root.row.deleted ? "" : root.row.avatar
     name: root.row.name
-    TapHandler { onTapped: root.view.openProfile(root.row.username) }
-    HoverHandler { cursorShape: Qt.PointingHandCursor }
+    clickable: !root.row.deleted
+    onClicked: root.view.openProfile(root.row.username)
   }
 
   Column {
@@ -98,6 +98,8 @@ Item {
     width: root.width - x - Style.space(14)
     spacing: Style.space(4)
 
+    // Name and handle lead to the profile, the age and the hash to the commit,
+    // as on the site; each underlines under the pointer.
     Item {
       width: body.width
       height: who.implicitHeight
@@ -106,31 +108,45 @@ Item {
         spacing: Style.space(6)
         width: parent.width - hash.implicitWidth - Style.space(8)
         Mono {
+          visible: root.row.deleted
+          text: "[deleted]"
+          color: Color.muted
+          font.pixelSize: Style.font.body
+          font.bold: true
+        }
+        LinkText {
           id: nameText
-          text: root.row.deleted ? "[deleted]" : root.row.name
-          color: root.row.deleted ? Color.muted : Color.foreground
+          visible: !root.row.deleted
+          text: root.row.name
           font.pixelSize: Style.font.body
           font.bold: true
           elide: Text.ElideRight
-          TapHandler { onTapped: root.view.openProfile(root.row.username) }
-          HoverHandler { cursorShape: Qt.PointingHandCursor }
+          onClicked: root.view.openProfile(root.row.username)
         }
-        Mono {
+        LinkText {
           visible: !root.row.deleted
           anchors.baseline: nameText.baseline
-          text: root.row.handle + " · " + Model.ageFor(root.row.created, root.view.now) + (root.row.pending ? " · held" : "")
-          color: Color.muted
-          elide: Text.ElideRight
+          text: root.row.handle
+          restColor: Color.muted
+          onClicked: root.view.openProfile(root.row.username)
+        }
+        Mono { visible: !root.row.deleted; anchors.baseline: nameText.baseline; text: "·"; color: Color.muted }
+        LinkText {
+          visible: !root.row.deleted
+          anchors.baseline: nameText.baseline
+          text: Model.ageFor(root.row.created, root.view.now) + (root.row.pending ? " · held" : "")
+          restColor: Color.muted
+          onClicked: root.view.openCommit(root.row.id)
         }
       }
-      Mono {
+      LinkText {
         id: hash
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.hash
-        color: hashHover.hovered ? root.view.primary : Color.muted
-        TapHandler { onTapped: root.view.openOnSite(root.row.url) }
-        HoverHandler { id: hashHover; cursorShape: Qt.PointingHandCursor }
+        restColor: Color.muted
+        hoverColor: root.view.primary
+        onClicked: root.view.openCommit(root.row.id)
       }
     }
 
@@ -151,7 +167,7 @@ Item {
         ? "❝ " + root.row.quoted.name + "  " + root.row.quoted.handle + " · " + Model.ageFor(root.row.quoted.created, root.view.now)
         : ""
       text: root.row.quoted ? root.row.quoted.body : ""
-      onTapped: root.view.openOnSite(root.row.quoted.url)
+      onTapped: root.view.openCommit(root.row.quoted.id)
     }
 
     Box {
@@ -267,7 +283,7 @@ Item {
     height: Math.max(boxColumn.implicitHeight, thumb.visible ? thumb.height : 0) + inset * 1.4
     color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
     border.width: 1
-    border.color: root.view.railColor
+    border.color: boxHover.hovered ? Color.muted : root.view.railColor
     radius: Style.space(6)
     Picture {
       id: thumb

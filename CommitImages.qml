@@ -39,10 +39,11 @@ Item {
           anchors.fill: parent
           radius: tile.radius
           color: "transparent"
-          border.width: 1
-          border.color: root.view.railColor
+          border.width: tileHover.hovered ? 2 : 1
+          border.color: tileHover.hovered ? root.view.primary : root.view.railColor
         }
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        opacity: tileHover.hovered ? 0.9 : 1
+        HoverHandler { id: tileHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: root.view.showImages(root.images, tile.index) }
       }
     }

@@ -10,6 +10,9 @@ Item {
   property string name: ""
   property real size: Style.space(32)
   property color ring: "transparent"
+  // Lightens under the pointer when the avatar leads somewhere.
+  property bool clickable: false
+  signal clicked()
 
   readonly property real ringWidth: ring.a > 0 ? 2 : 0
   readonly property real gap: ringWidth > 0 ? 2 : 0
@@ -24,6 +27,18 @@ Item {
     color: "transparent"
     border.width: root.ringWidth
     border.color: root.ring
+  }
+
+  opacity: clickable && area.containsMouse ? 0.75 : 1
+  Behavior on opacity { NumberAnimation { duration: 120 } }
+
+  MouseArea {
+    id: area
+    anchors.fill: parent
+    enabled: root.clickable
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    onClicked: root.clicked()
   }
 
   Picture {

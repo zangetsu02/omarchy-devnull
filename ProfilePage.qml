@@ -179,6 +179,13 @@ Item {
     width: people.width
     height: Style.space(60)
 
+    Rectangle {
+      anchors.fill: parent
+      visible: personHover.hovered
+      color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
+    }
+    HoverHandler { id: personHover; cursorShape: Qt.PointingHandCursor }
+
     Avatar {
       id: face
       x: Style.space(20)
