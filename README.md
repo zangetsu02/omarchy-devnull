@@ -23,7 +23,17 @@ git clone https://github.com/zangetsu02/omarchy-devnull ~/.config/omarchy/plugin
 omarchy bar put zangetsu.devnull
 ```
 
-Then pair this machine once, as below.
+So that the full client floats, centred, instead of joining the tiling layout,
+add this to `~/.config/hypr/hyprland.lua` and run `hyprctl reload`:
+
+```lua
+o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { float = true })
+o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { size = { "(min(1220, monitor_w*0.92))", "(min(800, monitor_h*0.85))" } })
+o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { center = true })
+```
+
+Size comes before centring, and the `min()` keeps it inside a small or
+vertical monitor. Then pair this machine once, as below.
 
 ## Keys in the full client
 

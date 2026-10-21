@@ -234,7 +234,9 @@ Item {
     id: window
     visible: root.opened
     title: "dev-null"
-    color: Color.background
+    // Opaque even when the theme's background is not: windows behind must not
+    // show through the text.
+    color: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 1)
     implicitWidth: 1220
     implicitHeight: 800
     minimumSize: Qt.size(760, 500)
