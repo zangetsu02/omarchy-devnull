@@ -21,11 +21,11 @@ spec.loader.exec_module(mock_module)
 
 
 def main():
-    state, url, stop = mock_module.start()
     tmp = tempfile.TemporaryDirectory()
     home = Path(tmp.name)
     subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
                     "-f", str(home / "id_ed25519")], check=True)
+    state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
     environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
 
     def run(*args):

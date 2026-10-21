@@ -66,4 +66,32 @@ assert.equal(Model.withStar(after, false).stars_count, 4)
 // The optimistic count never goes below zero, whatever the server said before.
 assert.equal(Model.withStar({ id: "a", starred: true, stars_count: 0 }, false).stars_count, 0)
 
+// A refused reply keeps what was typed; an accepted one clears it.
+assert.equal(Model.keepsDraft({ error: "The body field is required.", kind: "http" }), true)
+assert.equal(Model.keepsDraft({ id: "new", status: "pending" }), false)
+assert.equal(Model.keepsDraft(null), false)
+
+// Drafts are held per commit id, because the feed is replaced wholesale on
+// every refresh and an index would point at whatever slid into that slot.
+let drafts = Model.withDraft({}, "a", "half a thou")
+drafts = Model.withDraft(drafts, "b", "another")
+assert.equal(Model.draftFor(drafts, "a"), "half a thou")
+assert.equal(Model.draftFor(drafts, "b"), "another")
+assert.equal(Model.draftFor(drafts, "missing"), "")
+assert.equal(Model.draftFor(null, "a"), "")
+drafts = Model.clearDraft(drafts, "a")
+assert.equal(Model.draftFor(drafts, "a"), "")
+assert.equal(Model.draftFor(drafts, "b"), "another")
+
+// Once older pages are loaded, the timer must stop replacing the feed with
+// page one — it would throw away everything the user scrolled to.
+assert.deepEqual(Array.from(Model.tickCalls(true, false, false)), ["feed"])
+assert.deepEqual(Array.from(Model.tickCalls(true, false, true)), [])
+assert.deepEqual(Array.from(Model.tickCalls(false, false, true)), ["me"])
+
+// Opening the panel while broken probes once, so re-pairing is noticed without
+// restarting the shell.
+assert.deepEqual(Array.from(Model.openCalls(false)), ["notifications", "feed"])
+assert.deepEqual(Array.from(Model.openCalls(true)), ["me"])
+
 console.log("service: all checks passed")

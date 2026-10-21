@@ -102,15 +102,48 @@ function pollDelay(panelOpen, settings) {
 // does, so it must not count.
 var BROKEN_AFTER = 3
 
-function tickCalls(panelOpen, broken) {
+function tickCalls(panelOpen, broken, expanded) {
     if (broken) return []
     // Closed, only /me: it carries the unread count without marking anything read.
-    return panelOpen ? ["feed"] : ["me"]
+    if (!panelOpen) return ["me"]
+    // Once he has paged back, refreshing would replace everything he scrolled to
+    // with page one. The feed waits until the panel is opened again.
+    return expanded ? [] : ["feed"]
 }
 
-function openCalls() {
+function openCalls(broken) {
+    // Broken, one probe: it costs nothing and it is how a re-pair gets noticed
+    // without restarting the shell.
+    if (broken) return ["me"]
     // The one place notifications are listed, which is also what marks them read.
     return ["notifications", "feed"]
+}
+
+// --- Reply drafts ------------------------------------------------------------
+//
+// Held per commit id, not per row: the feed is replaced wholesale on every
+// refresh, so a delegate — and the field inside it — can go away mid-sentence.
+
+function keepsDraft(answer) {
+    return !!(answer && answer.error)
+}
+
+function draftFor(drafts, id) {
+    if (!drafts) return ""
+    return drafts[id] || ""
+}
+
+function withDraft(drafts, id, text) {
+    var copy = {}
+    for (var key in (drafts || {})) copy[key] = drafts[key]
+    copy[id] = text
+    return copy
+}
+
+function clearDraft(drafts, id) {
+    var copy = {}
+    for (var key in (drafts || {})) if (key !== id) copy[key] = drafts[key]
+    return copy
 }
 
 function nextFailureCount(count, result) {

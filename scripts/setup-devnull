@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import secrets
+import select
 import subprocess
 import sys
 import time
@@ -65,13 +66,19 @@ def authorize_url(key_path, device_name, challenge, state):
     return f"{BASE_URL}/mobile/authorize?{query}"
 
 
+# What a callback turned out to be, when it was not a code.
+IGNORE = "ignore"      # meant for something else, or empty: keep waiting
+CANCELLED = "cancelled"  # he said no on the page: stop, and say so
+
+
 def accepts_callback(state, url):
-    """The code, or False when the callback is for someone else or is a refusal."""
+    """The code, or IGNORE / CANCELLED."""
     params = parse_qs(urlparse(url).query)
     if params.get("state", [""])[0] != state:
-        return False
-    code = params.get("code", [""])[0]
-    return code or False
+        return IGNORE
+    if params.get("error", [""])[0]:
+        return CANCELLED
+    return params.get("code", [""])[0] or IGNORE
 
 
 def handler_conflict(current):
@@ -116,19 +123,37 @@ def register_handler():
                    capture_output=True)
 
 
-def wait_for_callback(fifo, state):
-    """Read one callback URL, or time out when the code would have expired anyway."""
-    deadline = time.time() + CODE_LIFETIME
-    while time.time() < deadline:
-        with open(fifo, "r") as pipe:  # blocks until the handler writes
-            url = pipe.read().strip()
-        if not url:
-            continue
-        code = accepts_callback(state, url)
-        if code:
-            return code
-        print("That callback was not the one we asked for; still waiting.", file=sys.stderr)
-    return None
+def wait_for_callback(fifo, state, deadline=None):
+    """The code, CANCELLED, or None when nothing came before the deadline.
+
+    Opened non-blocking and waited on with select, so closing the browser ends
+    the setup at the deadline instead of wedging it on a FIFO with no writer.
+    """
+    deadline = deadline or (time.monotonic() + CODE_LIFETIME)
+    fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        buffered = ""
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return None
+            if not select.select([fd], [], [], left)[0]:
+                continue
+            chunk = os.read(fd, 4096).decode(errors="replace")
+            if not chunk:
+                # Every writer let go. Take what we have, then keep listening.
+                url, buffered = buffered.strip(), ""
+                if url:
+                    answer = accepts_callback(state, url)
+                    if answer != IGNORE:
+                        return answer
+                    print("That callback was not the one we asked for; still waiting.",
+                          file=sys.stderr)
+                time.sleep(0.05)
+                continue
+            buffered += chunk
+    finally:
+        os.close(fd)
 
 
 def main():
@@ -161,8 +186,11 @@ def main():
     finally:
         fifo.unlink(missing_ok=True)
 
+    if code == CANCELLED:
+        print("You cancelled it on the page. Nothing was paired.", file=sys.stderr)
+        return 1
     if not code:
-        print("No code came back, or you cancelled. Nothing was paired.", file=sys.stderr)
+        print("No code came back within five minutes. Nothing was paired.", file=sys.stderr)
         return 1
 
     result = subprocess.run(

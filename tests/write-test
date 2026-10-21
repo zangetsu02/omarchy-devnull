@@ -22,11 +22,11 @@ spec.loader.exec_module(mock_module)
 
 
 def main():
-    state, url, stop = mock_module.start()
     tmp = tempfile.TemporaryDirectory()
     home = Path(tmp.name)
     subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
                     "-f", str(home / "id_ed25519")], check=True)
+    state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
     environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
 
     def run(*args):
@@ -68,6 +68,17 @@ def main():
         answer, code = run("reply", ID, "x" * 4001)
         assert code == 1 and answer["kind"] == "http"
         assert json.loads(state.last_body)["body"] == "x" * 4001
+
+        # The mock is the only stand-in for upstream, so it has to check the one
+        # property that would silently break against the real server: that the
+        # signature really covers the bytes of the body.
+        assert state.verified_bodies > 0, "no request was signature-checked"
+        # And it has to be able to refuse: a signature over a different body fails.
+        assert mock_module.verify_signed_request(
+            public_key=(home / "id_ed25519.pub").read_text(),
+            timestamp="1771600000", nonce="a" * 32, method="POST",
+            uri="/api/v1/commits", body='{"body":"tampered"}',
+            signature=state.last_signature) is False
 
         print("write: all checks passed")
     finally:

@@ -26,6 +26,19 @@ Panel {
   // Which commit has its reply field open. Kept as an id, not an index: the
   // feed is replaced wholesale on every refresh.
   property string replyingTo: ""
+  // Kept here, not in the delegate: the feed is replaced wholesale on refresh,
+  // which destroys the TextField someone may be typing in.
+  property var drafts: ({})
+
+  Connections {
+    target: feed
+    function onReplyDone(id, answer) {
+      if (!Model.keepsDraft(answer)) {
+        root.drafts = Model.clearDraft(root.drafts, id)
+        if (root.replyingTo === id) root.replyingTo = ""
+      }
+    }
+  }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -95,9 +108,20 @@ Panel {
       onCloseRequested: root.close()
       onTextKey: function (t) { if (t === "r" || t === "R") feed.refresh() }
 
+      Flickable {
+        id: panelFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
       Column {
         id: column
-        width: parent.width
+        width: panelFlick.width
         spacing: Style.space(10)
 
         // --- What happened to you -----------------------------------------
@@ -227,11 +251,12 @@ Panel {
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.space(10)
-                onAccepted: {
-                  feed.sendReply(card.row.id, text)
-                  text = ""
-                  root.replyingTo = ""
-                }
+                // Restored from the draft, so a refresh mid-sentence costs nothing.
+                text: Model.draftFor(root.drafts, card.row.id)
+                onTextEdited: root.drafts = Model.withDraft(root.drafts, card.row.id, text)
+                // Not cleared here: the server may refuse it, and then what was
+                // typed is the only copy. onReplyDone clears it once it lands.
+                onAccepted: feed.sendReply(card.row.id, text)
               }
             }
           }
@@ -267,6 +292,7 @@ Panel {
           width: column.width
           wrapMode: Text.WordWrap
         }
+      }
       }
     }
   }

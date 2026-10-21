@@ -161,11 +161,12 @@ def cmd_notifications():
 
 
 def cmd_star(commit_id):
-    return call("POST", f"/api/v1/commits/{commit_id}/star")
+    # The star routes answer with the whole commit, as a CommitResource.
+    return call("POST", f"/api/v1/commits/{commit_id}/star").get("data", {})
 
 
 def cmd_unstar(commit_id):
-    return call("DELETE", f"/api/v1/commits/{commit_id}/star")
+    return call("DELETE", f"/api/v1/commits/{commit_id}/star").get("data", {})
 
 
 def cmd_reply(commit_id, body):

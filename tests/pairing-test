@@ -14,6 +14,7 @@ import subprocess
 import json
 import os
 import sys
+import time
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -66,10 +67,21 @@ def main():
     assert urlparse(url).path == "/mobile/authorize"
 
     # A code coming back under a different state is refused.
-    assert setup.accepts_callback("abc", "devnull://cb?code=1&state=zzz") is False
+    assert setup.accepts_callback("abc", "devnull://cb?code=1&state=zzz") == setup.IGNORE
     assert setup.accepts_callback("abc", "devnull://cb?code=1&state=abc") == "1"
-    # Cancelling is not a code, and is not a crash either.
-    assert setup.accepts_callback("abc", "devnull://cb?error=access_denied&state=abc") is False
+    # Cancelling is told apart from a callback meant for someone else: one ends
+    # the setup with "you cancelled", the other keeps waiting.
+    assert setup.accepts_callback("abc", "devnull://cb?error=access_denied&state=abc") == setup.CANCELLED
+    assert setup.accepts_callback("abc", "devnull://cb?state=abc") == setup.IGNORE
+
+    # Waiting for a callback that never comes gives up instead of hanging for
+    # ever: closing the browser must not leave the setup wedged on the FIFO.
+    with tempfile.TemporaryDirectory() as tmp:
+        fifo = Path(tmp) / "callback"
+        os.mkfifo(fifo, 0o600)
+        started = time.monotonic()
+        assert setup.wait_for_callback(fifo, "abc", deadline=time.monotonic() + 1) is None
+        assert time.monotonic() - started < 3, "it waited past its own deadline"
 
     # Review Focus: a scheme handler owned by something else stops the setup.
     assert setup.handler_conflict("firefox.desktop") is True

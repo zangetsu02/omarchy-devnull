@@ -22,16 +22,19 @@ QtObject {
   property bool panelOpen: false
 
   property int _authFailures: 0
+  // True once older pages were loaded: the timer then leaves the feed alone
+  // rather than replacing everything he scrolled to with page one.
+  property bool expanded: false
   property string _scriptPath: Qt.resolvedUrl("scripts/devnull").toString().replace("file://", "")
 
   property Timer _timer: Timer {
     interval: Model.pollDelay(root.panelOpen, root.settings)
-    running: !root.broken
+    running: true
     repeat: true
     onTriggered: root.tick()
   }
 
-  signal failed(string line)
+  signal replyDone(string id, var answer)
 
   function run(args, done) {
     var process = processComponent.createObject(root, { command: [root._scriptPath].concat(args) })
@@ -41,7 +44,6 @@ QtObject {
         root._authFailures = Model.nextFailureCount(root._authFailures, answer)
         root.broken = Model.isBroken(root._authFailures)
         root.lastError = Model.errorLine(answer)
-        root.failed(root.lastError)
       } else {
         root._authFailures = Model.nextFailureCount(root._authFailures, null)
         root.lastError = ""
@@ -52,7 +54,7 @@ QtObject {
   }
 
   function tick() {
-    var calls = Model.tickCalls(root.panelOpen, root.broken)
+    var calls = Model.tickCalls(root.panelOpen, root.broken, root.expanded)
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
   }
 
@@ -67,6 +69,7 @@ QtObject {
         if (!answer.error) {
           root.commits = answer.commits || []
           root.nextCursor = answer.next_cursor || ""
+          root.expanded = false
         }
         root.loading = false
       })
@@ -83,9 +86,22 @@ QtObject {
 
   function openPanel() {
     root.panelOpen = true
-    if (root.broken) return
-    var calls = Model.openCalls()
+    root.expanded = false
+    // Broken, this is a single probe: a successful answer clears the failure
+    // count, so re-pairing is noticed without restarting the shell.
+    var wasBroken = root.broken
+    var calls = Model.openCalls(root.broken)
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
+    if (wasBroken) root.recoveryCheck.restart()
+  }
+
+  // Gives the probe time to answer before deciding whether it is alive again.
+  property Timer recoveryCheck: Timer {
+    interval: 1500
+    onTriggered: if (!root.broken && root.panelOpen) {
+      var calls = Model.openCalls(false)
+      for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
+    }
   }
 
   function closePanel() {
@@ -102,6 +118,7 @@ QtObject {
       if (answer.error) return
       root.commits = root.commits.concat(answer.commits || [])
       root.nextCursor = answer.next_cursor || ""
+      root.expanded = true
     })
   }
 
@@ -141,6 +158,7 @@ QtObject {
       if (answer.error) root.replyStatus = Model.errorLine(answer)
       else if (answer.status === "pending") root.replyStatus = "Sent — held for moderation."
       else root.replyStatus = "Sent."
+      root.replyDone(id, answer)
     })
   }
 

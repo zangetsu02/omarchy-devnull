@@ -42,7 +42,6 @@ anywhere.
 |---|---|---|
 | Unread check while closed | 60s | Fetches only the unread count. See below. |
 | Feed refresh while open | 20s | Reloads the feed while you are looking at it. |
-| Commits kept | 50 | How far back the panel remembers. |
 | Lines shown | 2 | Longer commits are cut; click to read on the site. |
 
 ## Three things worth knowing
@@ -56,6 +55,10 @@ official app too. That is not a choice this plugin makes: listing notifications
 is what marks them read, upstream, whatever filter you ask for. So the closed
 panel never lists them — it only asks for the count — and the list is fetched
 once, when you open it, because opening it *is* reading them.
+
+**Older pages stay put.** Once you click "older…", the feed stops auto-refreshing
+so it cannot throw away what you scrolled to. Close and reopen the panel to get
+back to the top.
 
 **A reply can be held.** dev-null moderates commits from accounts without
 "good reputation", so yours may come back pending. The panel says which; it

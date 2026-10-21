@@ -9,8 +9,12 @@ Run it directly to poke at it by hand, or import `start()` from a test.
 """
 
 import json
+import os
 import re
+import subprocess
+import tempfile
 import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CURSOR = "eyJpZCI6..."
@@ -35,6 +39,30 @@ NOTIFICATIONS = [
 ]
 
 
+def verify_signed_request(public_key, timestamp, nonce, method, uri, body, signature):
+    """Check an X-SSH-Signature the way the server does, with ssh-keygen.
+
+    The header carries the base64 body on one line; ssh-keygen wants the armor
+    back. Returns True only if the signature covers exactly these bytes.
+    """
+    if not signature:
+        return False
+    wrapped = "\n".join(signature[i:i + 70] for i in range(0, len(signature), 70))
+    armored = f"-----BEGIN SSH SIGNATURE-----\n{wrapped}\n-----END SSH SIGNATURE-----\n"
+    message = "\n".join([timestamp, nonce, method, uri, body])
+    with tempfile.TemporaryDirectory() as tmp:
+        allowed = Path(tmp) / "allowed_signers"
+        allowed.write_text(f"tester@localhost {public_key.strip()}\n")
+        signature_file = Path(tmp) / "sig"
+        signature_file.write_text(armored)
+        result = subprocess.run(
+            ["ssh-keygen", "-Y", "verify", "-f", str(allowed), "-I", "tester@localhost",
+             "-n", "devnull-api", "-s", str(signature_file)],
+            input=message.encode(), capture_output=True,
+        )
+    return result.returncode == 0
+
+
 class State:
     def __init__(self):
         self.calls = []
@@ -44,6 +72,9 @@ class State:
         self.notifications_calls = 0
         self.spent_nonces = set()
         self.signature_covered_body = False
+        self.verified_bodies = 0
+        self.last_signature = ""
+        self.public_key = ""
         self.next_response = None
         self.next_status = None
         self.stars = {c["id"]: c["starred"] for c in COMMITS}
@@ -87,7 +118,18 @@ def handler_for(state):
             state.last_uri = self.path
             state.last_method = self.command
             state.last_body = body
-            state.signature_covered_body = bool(body) and bool(self.headers.get("X-SSH-Signature"))
+            state.last_signature = self.headers.get("X-SSH-Signature", "")
+            # The real check, not the presence of a header: the signature must
+            # cover these exact bytes, or the real server would refuse it.
+            state.signature_covered_body = verify_signed_request(
+                state.public_key,
+                self.headers.get("X-Devnull-Timestamp", ""),
+                self.headers.get("X-Devnull-Nonce", ""),
+                self.command, self.path, body,
+                state.last_signature,
+            ) if state.public_key else False
+            if state.signature_covered_body and body:
+                state.verified_bodies += 1
 
         def forced(self):
             """A canned answer a test asked for, used once."""
@@ -128,7 +170,7 @@ def handler_for(state):
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", path)
             if star:
                 state.stars[star.group(1)] = True
-                self.reply(200, {"starred": True, "stars_count": 5})
+                self.reply(200, {"data": dict(COMMITS[0], starred=True, stars_count=5)})
             elif path == "/api/v1/commits":
                 sent = json.loads(body)
                 self.reply(201, {"data": {"id": "new", "short_hash": "aaaaaaa",
@@ -147,16 +189,17 @@ def handler_for(state):
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", self.path.split("?")[0])
             if star:
                 state.stars[star.group(1)] = False
-                self.reply(200, {"starred": False, "stars_count": 4})
+                self.reply(200, {"data": dict(COMMITS[0], starred=False, stars_count=4)})
             else:
                 self.reply(404, {"message": "Not Found."})
 
     return Handler
 
 
-def start():
-    """Returns (state, url, stop)."""
+def start(public_key=""):
+    """Returns (state, url, stop). With a public key, every request is verified."""
     state = State()
+    state.public_key = public_key
     server = HTTPServer(("127.0.0.1", 0), handler_for(state))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return state, f"http://127.0.0.1:{server.server_port}", server.shutdown
