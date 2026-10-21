@@ -161,7 +161,7 @@ Item {
     Standing {
       width: parent.width - parent.padding * 2
       view: root.view
-      data: root.standing
+      standing: root.standing
       lane: root.lane
     }
 

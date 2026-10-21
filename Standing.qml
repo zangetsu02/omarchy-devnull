@@ -10,16 +10,17 @@ Column {
 
   required property var view
   // The bridge's `standing` answer: { achievements, activity, streaks }.
-  property var data: ({})
+  // (Not `data`: every Item already has a `data`, the list of its children.)
+  property var standing: ({})
   property color lane: Color.accent
 
-  readonly property var standing: Model.standingFor(data.achievements)
-  readonly property var cells: Model.activityCells(data.activity)
-  readonly property bool yearly: !!data.activity && data.activity.scale === "year"
-  readonly property var streaks: data.streaks || {}
+  readonly property var level: Model.standingFor(standing.achievements)
+  readonly property var cells: Model.activityCells(standing.activity)
+  readonly property bool yearly: !!standing.activity && standing.activity.scale === "year"
+  readonly property var streaks: standing.streaks || {}
   readonly property real gap: 3
 
-  visible: standing.known
+  visible: level.known
   spacing: Style.space(12)
 
   // --- Commit activity ------------------------------------------------------------
@@ -28,7 +29,7 @@ Column {
     width: root.width
     height: activityTitle.implicitHeight
     Mono { id: activityTitle; text: "Commit activity"; font.pixelSize: Style.font.body; font.bold: true }
-    Mono { anchors.right: parent.right; text: Model.activitySummary(root.data.activity); color: Color.muted }
+    Mono { anchors.right: parent.right; text: Model.activitySummary(root.standing.activity); color: Color.muted }
   }
 
   // A strip for a day, a week or a month; a week-per-column grid for a year.
@@ -115,13 +116,13 @@ Column {
       id: levelTitle
       textFormat: Text.StyledText
       font.pixelSize: Style.font.body
-      text: Model.TROPHY + "  <b>" + Model.escapeHtml(root.standing.label) + "</b>"
-        + Model.colored("  ·  " + root.standing.xp + " XP", Color.muted)
+      text: Model.TROPHY + "  <b>" + Model.escapeHtml(root.level.label) + "</b>"
+        + Model.colored("  ·  " + root.level.xp + " XP", Color.muted)
     }
     Mono {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: root.standing.unlocked + " / " + root.standing.badges.length + " unlocked"
+      text: root.level.unlocked + " / " + root.level.badges.length + " unlocked"
       color: Color.muted
     }
   }
@@ -132,8 +133,8 @@ Column {
     Item {
       width: root.width
       height: xpLeft.implicitHeight
-      Mono { id: xpLeft; text: root.standing.xp + " / " + root.standing.nextXp + " XP"; color: Color.muted; font.pixelSize: Style.font.caption }
-      Mono { anchors.right: parent.right; text: root.standing.toNext; color: Color.muted; font.pixelSize: Style.font.caption }
+      Mono { id: xpLeft; text: root.level.xp + " / " + root.level.nextXp + " XP"; color: Color.muted; font.pixelSize: Style.font.caption }
+      Mono { anchors.right: parent.right; text: root.level.toNext; color: Color.muted; font.pixelSize: Style.font.caption }
     }
     Rectangle {
       width: root.width
@@ -141,7 +142,7 @@ Column {
       radius: height / 2
       color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
       Rectangle {
-        width: parent.width * root.standing.progress
+        width: parent.width * root.level.progress
         height: parent.height
         radius: parent.radius
         color: root.lane
@@ -154,7 +155,7 @@ Column {
     width: root.width
     spacing: Style.space(6)
     Repeater {
-      model: root.standing.badges
+      model: root.level.badges
       Rectangle {
         id: badge
         required property var modelData
