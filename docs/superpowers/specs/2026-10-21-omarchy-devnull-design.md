@@ -44,7 +44,9 @@ These would make it a failure even if every feature worked:
 - **Scraping HTML.** The site has a real API; parsing its markup would be a
   worse plugin that breaks on a restyle.
 - **Touching the user's web session.** No cookie stealing, no headless browser.
-- **A noisy bar.** The icon earns attention only for something addressed to him.
+- **A noisy bar.** The icon stays dark unless something is genuinely unread.
+- **Eating his unread state.** Listing notifications marks them read everywhere;
+  the plugin must never do that behind his back.
 - **A key with more power than the job.** The signing key must not be able to
   sign git commits or log in anywhere else.
 - **Lying about a reply.** Replies are moderated; the panel shows the state the
@@ -161,12 +163,33 @@ key, writes and registers the `devnull://` handler, opens the authorize page,
 waits for the code, redeems it, and finishes by telling him to accept the commit
 rules on the site if he has not.
 
-### Polling
+### Polling, and the trap in it
 
-- 60 seconds while the panel is closed, and only the notification count is
-  fetched.
-- 20 seconds while it is open, for the feed too.
-- Both are settings in the manifest, as electroline does it.
+`GET /api/v1/notifications` **marks every relevant notification as read**, just
+by listing them, whatever `?type=` filter is sent. Its own docblock says so, and
+`UpdateNotificationsReadAt` does it before the query runs. Polling that endpoint
+would quietly empty his inbox on the website and in the official app.
+
+The side-effect-free count is `unread_notifications_count`, returned by
+`GET /api/v1/me`. So:
+
+- **Panel closed, every 60 seconds:** `GET /api/v1/me`. Nothing else. The badge
+  is that number.
+- **Panel opened:** that, and only that, calls `GET /api/v1/notifications`.
+  Opening the panel *is* reading them, exactly as opening the website is, so the
+  read state it clears is the read state he just consumed. The response carries
+  `read_at`, which marks the boundary between what he has now seen and what
+  arrives next.
+- **Panel open, every 20 seconds:** the feed only. Notifications are not
+  re-listed while it sits open; they are already read.
+
+Both intervals are manifest settings, as in electroline.
+
+**The badge counts every kind of notification** — replies and mentions, but also
+stars, follows and moderation outcomes — because `/me` gives one total and no
+breakdown. Narrowing it to replies would mean calling the destructive endpoint
+on a timer, which is the one thing this design refuses. A slightly broader badge
+is the price, and it is paid once per glance.
 
 ### The panel
 
@@ -179,14 +202,34 @@ rules on the site if he has not.
 - **Star** is one tap, applied optimistically and rolled back if the call fails.
 - **Reply** opens a one-line field under the entry. After sending, the row shows
   what the server returned: posted, or waiting for moderation.
-- **Anything else** opens `https://dev-null.sh/@user/commits/{id}` in the
-  browser.
+- **Anything else** opens the commit's `html_url`, which the feed already
+  carries, in the browser.
+
+A reply that comes back `Pending` is reported once, at send time, and then
+forgotten. The plugin does not track it: moderation ends in an `approved` or
+`rejected` notification, which the panel already shows. The loop closes itself
+for free.
+
+**A dead pairing is not a quiet failure.** A revoked device or a lost key makes
+every call 401 forever. After three consecutive 401s the icon goes to a distinct
+broken state and the panel says to run the setup again. That is not noise; it is
+the plugin admitting it no longer works.
 
 ### Checking it works
 
-`tests/` gets a script that signs a real request and calls `GET /api/v1/me`,
-so the signing scheme can be proven end to end without the bar. The body
-clamping and the hash formatting get plain unit checks in `Model.js`.
+There is no sandbox: every reply sent while testing is a real public commit
+from his real account, under live moderation and throttling.
+
+So `tests/` gets a mock server, as electroline's `tests/mock-cloud` already
+does for its own backend, and the reply and star paths are exercised against
+that. Against the real site, two things only: a signed `GET /api/v1/me`, which
+proves the signing scheme end to end and changes nothing, and — once, by hand,
+when he is ready — a single reply to one of his own commits.
+
+The body clamping and the hash formatting get plain unit checks in `Model.js`.
+
+This also fixes the order of the work: nothing past the signing scheme can be
+tried until he has run the pairing flow in his own browser.
 
 ## Risks worth saying out loud
 
