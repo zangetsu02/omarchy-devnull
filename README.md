@@ -25,9 +25,26 @@ dev-null's own palette for the author lanes and the action blue.
 ## Install
 
 ```bash
-git clone https://github.com/zangetsu02/omarchy-devnull ~/.config/omarchy/plugins/zangetsu.devnull
-omarchy bar put zangetsu.devnull
+omarchy plugin add https://github.com/zangetsu02/omarchy-devnull.git --enable
 ```
+
+That puts the badge on the right of the bar. Then pair this machine once
+(see [Setup](#setup)).
+
+### Needs
+
+Everything is on a standard Omarchy install; listed so nothing is a surprise.
+
+| Package | For |
+|---|---|
+| `python` | `scripts/devnull`, the bridge to dev-null.sh (standard library only) |
+| `openssh` | `ssh-keygen`, which makes and uses the device key |
+| `xdg-utils` | opening links, and the `devnull://` handler for pairing |
+| `wl-clipboard` | `y`, copying a commit's link |
+| `qt6-imageformats` | pictures: dev-null serves them as WebP |
+| a Nerd Font | the action icons; Omarchy's monospace font is one |
+
+### A floating window
 
 So that the full client floats, centred and opaque, instead of joining the
 tiling layout with the see-through default every window gets,
@@ -40,7 +57,7 @@ o.window({ class = "^org.quickshell$", title = "^dev-null$" }, { center = true }
 ```
 
 Size comes before centring, and the `min()` keeps it inside a small or
-vertical monitor. Then pair this machine once, as below.
+vertical monitor. The plugin never edits this file for you.
 
 ## Keys in the full client
 
@@ -79,7 +96,7 @@ touches the key; the QML asks it and reads JSON back.
 ## Setup
 
 ```bash
-~/.config/omarchy/plugins/zangetsu.devnull/scripts/setup-devnull
+~/.config/omarchy/plugins/io.github.zangetsu02.devnull/scripts/setup-devnull
 ```
 
 It makes the key, registers a handler for `devnull://` links, opens the approval
@@ -88,6 +105,24 @@ page in your browser, and redeems the code that comes back. One minute, once.
 Then, if you have never done it, **accept the commit rules on dev-null.sh**.
 Until you do, the server refuses every reply — from here, from the app, from
 anywhere.
+
+## Remove
+
+```bash
+omarchy plugin remove io.github.zangetsu02.devnull
+```
+
+That takes the plugin and its badge away. Pairing left three things of its own,
+which go with it if you want a clean machine:
+
+```bash
+rm -rf ~/.local/share/omarchy-devnull                              # the device key
+rm ~/.local/share/applications/omarchy-devnull-callback.desktop    # the devnull:// handler
+update-desktop-database ~/.local/share/applications
+```
+
+Then revoke the device on dev-null.sh under **Settings → Devices**, and drop
+the three window rules from `hyprland.lua` if you added them.
 
 ## Settings
 

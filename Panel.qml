@@ -8,7 +8,7 @@ import "Model.js" as Model
 // its page; starring, replying and scrolling back live there.
 Panel {
   id: root
-  moduleName: "zangetsu.devnull"
+  moduleName: "io.github.zangetsu02.devnull"
   ipcTarget: "devnull"
   manageIpc: false
 
