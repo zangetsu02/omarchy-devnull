@@ -197,3 +197,7 @@ assert.deepEqual({ ...Model.noticeTarget(Model.noticeFor({ type: "replied", comm
   { page: "commit", argument: "c1" })
 assert.equal(Model.noticeTarget(Model.noticeFor({ type: "approved" }), "me"), null)
 assert.equal(Model.summaryFor({ type: "leveled_up", actor: { username: "zangetsu02" } }), "You levelled up")
+
+// Anything interpolated into a StyledText label is escaped first.
+assert.equal(Model.escapeHtml("<img src=x>&"), "&lt;img src=x&gt;&amp;")
+assert.equal(Model.colored("<b>", "#fff"), "<font color='#fff'>&lt;b&gt;</font>")

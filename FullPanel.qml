@@ -31,10 +31,8 @@ Item {
   property double now: Date.now()
 
   function laneColor(index) { return scheme.lanes[index] || scheme.lanes[0] }
-  function esc(text) {
-    return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-  }
-  function dimmed(text) { return "<font color='" + Color.muted + "'>" + esc(text) + "</font>" }
+  function esc(text) { return Model.escapeHtml(text) }
+  function dimmed(text) { return Model.colored(text, Color.muted) }
 
   function noticeColor(type) { return Model.noticeTint(type, scheme) || Color.muted }
 
@@ -167,9 +165,11 @@ Item {
     try { payload = JSON.parse(String(payloadJson || "{}")) || ({}) } catch (e) {}
     if (shell && shell.bar && typeof shell.bar.hideBarWidget === "function")
       shell.bar.hideBarWidget(pluginId)
+    // The popup may ask for a page: { page: "commit" | "profile" | …, argument }.
+    // The log stays underneath, so ⌫ goes back to it.
     history = []
     show("log", "")
-    logList.selectedId = String(payload.commit || "")
+    if (payload.page) goTo(String(payload.page), String(payload.argument || ""))
     now = Date.now()
     opened = true
     feed.openPanel()

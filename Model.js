@@ -46,6 +46,16 @@ function without(base, dropped) {
     return copy
 }
 
+// For labels in Text.StyledText: what came from the server is escaped, then
+// wrapped in a colour when one is given.
+function escapeHtml(text) {
+    return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function colored(text, color) {
+    return "<font color='" + color + "'>" + escapeHtml(text) + "</font>"
+}
+
 // Only web links leave the shell: a link from the server is opened with
 // xdg-open, which would just as happily run any other scheme's handler.
 function webUrl(url) {
