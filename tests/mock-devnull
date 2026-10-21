@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""A stand-in for dev-null.sh, so the bridge can be tested without the real site.
+
+It mirrors the shapes the real API returns — a Laravel resource collection with
+its `data` and `meta.next_cursor` — and enforces the parts of the protocol that
+matter: the three signature headers must be there, and a nonce is spent once.
+
+Run it directly to poke at it by hand, or import `start()` from a test.
+"""
+
+import json
+import os
+import re
+import subprocess
+import tempfile
+import threading
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+CURSOR = "eyJpZCI6..."
+
+COMMITS = [
+    {"id": "01a15d37-0511-7071-a1ae-d28a502b4a24", "short_hash": "d453634",
+     "body": "I built chorei, a tool that helps me prepare my daily standup.",
+     "author": {"username": "zangetsu02", "name": "christian"},
+     "stars_count": 4, "starred": False, "status": "approved", "replies_count": 1,
+     "created_at": "2026-10-21T07:12:00.000000Z",
+     "html_url": "https://dev-null.sh/@zangetsu02/commits/01a15d37"},
+    {"id": "01a15d76-9c69-7123-bd48-48dc6b82dce4", "short_hash": "36795c7",
+     "body": "", "author": {"username": "ndk98z", "name": "Khanhz"},
+     "stars_count": 0, "starred": True, "status": "approved", "replies_count": 0,
+     "created_at": "2026-10-21T07:05:00.000000Z",
+     "html_url": "https://dev-null.sh/@ndk98z/commits/01a15d76"},
+]
+
+REPLIES = [
+    {"id": "01a15d90-0000-7000-8000-000000000001", "short_hash": "0000001",
+     "body": "Seems like github pages tho", "parent_id": COMMITS[0]["id"],
+     "author": {"username": "pptx704", "name": "pptx704", "lane": 3},
+     "stars_count": 0, "starred": False, "status": "approved", "replies_count": 0,
+     "created_at": "2026-10-21T07:20:00.000000Z",
+     "html_url": "https://dev-null.sh/@pptx704/commits/01a15d90"},
+]
+
+USER = {"username": "pptx704", "name": "pptx704", "lane": 3, "bio": "ships things",
+        "commits_count": 9, "followers_count": 4, "following_count": 2, "is_followed": False}
+
+NOTIFICATIONS = [
+    {"id": "n1", "type": "replied", "read_at": None,
+     "actor": {"username": "pptx704"}, "commit": {"short_hash": "d453634", "body": "Seems like github pages tho"}},
+]
+
+
+def verify_signed_request(public_key, timestamp, nonce, method, uri, body, signature):
+    """Check an X-SSH-Signature the way the server does, with ssh-keygen.
+
+    The header carries the base64 body on one line; ssh-keygen wants the armor
+    back. Returns True only if the signature covers exactly these bytes.
+    """
+    if not signature:
+        return False
+    wrapped = "\n".join(signature[i:i + 70] for i in range(0, len(signature), 70))
+    armored = f"-----BEGIN SSH SIGNATURE-----\n{wrapped}\n-----END SSH SIGNATURE-----\n"
+    message = "\n".join([timestamp, nonce, method, uri, body])
+    with tempfile.TemporaryDirectory() as tmp:
+        allowed = Path(tmp) / "allowed_signers"
+        allowed.write_text(f"tester@localhost {public_key.strip()}\n")
+        signature_file = Path(tmp) / "sig"
+        signature_file.write_text(armored)
+        result = subprocess.run(
+            ["ssh-keygen", "-Y", "verify", "-f", str(allowed), "-I", "tester@localhost",
+             "-n", "devnull-api", "-s", str(signature_file)],
+            input=message.encode(), capture_output=True,
+        )
+    return result.returncode == 0
+
+
+class State:
+    def __init__(self):
+        self.calls = []
+        self.last_uri = None
+        self.last_method = None
+        self.last_body = None
+        self.notifications_calls = 0
+        self.spent_nonces = set()
+        self.signature_covered_body = False
+        self.verified_bodies = 0
+        self.last_signature = ""
+        self.public_key = ""
+        self.next_response = None
+        self.next_status = None
+        self.stars = {c["id"]: c["starred"] for c in COMMITS}
+
+
+def handler_for(state):
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):
+            pass
+
+        def reply(self, status, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def no_content(self):
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def signed(self):
+            """The three headers, well-formed, and a nonce that was never used."""
+            timestamp = self.headers.get("X-Devnull-Timestamp", "")
+            nonce = self.headers.get("X-Devnull-Nonce", "")
+            signature = self.headers.get("X-SSH-Signature", "")
+            if not (timestamp.isdigit() and re.fullmatch(r"[0-9a-f]{32}", nonce) and signature):
+                self.reply(401, {"code": "invalid_signature", "message": "Malformed payload."})
+                return False
+            if nonce in state.spent_nonces:
+                self.reply(400, {"code": "invalid_signature", "message": "Replayed nonce."})
+                return False
+            state.spent_nonces.add(nonce)
+            return True
+
+        def read_body(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            return self.rfile.read(length).decode() if length else ""
+
+        def record(self, body=""):
+            state.calls.append(self.path.split("?")[0])
+            state.last_uri = self.path
+            state.last_method = self.command
+            state.last_body = body
+            state.last_signature = self.headers.get("X-SSH-Signature", "")
+            # The real check, not the presence of a header: the signature must
+            # cover these exact bytes, or the real server would refuse it.
+            state.signature_covered_body = verify_signed_request(
+                state.public_key,
+                self.headers.get("X-Devnull-Timestamp", ""),
+                self.headers.get("X-Devnull-Nonce", ""),
+                self.command, self.path, body,
+                state.last_signature,
+            ) if state.public_key else False
+            if state.signature_covered_body and body:
+                state.verified_bodies += 1
+
+        def forced(self):
+            """A canned answer a test asked for, used once."""
+            if state.next_status or state.next_response:
+                status = state.next_status or 200
+                payload = state.next_response or {}
+                state.next_status = state.next_response = None
+                self.reply(status, payload)
+                return True
+            return False
+
+        def do_GET(self):
+            if not self.signed():
+                return
+            self.record()
+            if self.forced():
+                return
+            path = self.path.split("?")[0]
+            if path == "/api/v1/me":
+                self.reply(200, {"data": {"username": "zangetsu02"},
+                                 "unread_notifications_count": 3})
+            elif path in ("/api/v1/log/latest", "/api/v1/log/following", "/api/v1/log/trending"):
+                self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
+            elif re.fullmatch(r"/api/v1/users/[^/]+", path):
+                self.reply(200, {"data": USER})
+            elif re.fullmatch(r"/api/v1/users/[^/]+/(followers|following)", path):
+                self.reply(200, {"data": [USER], "meta": {"next_cursor": None}})
+            elif re.fullmatch(r"/api/v1/users/[^/]+/commits", path) or path == "/api/v1/starred":
+                self.reply(200, {"data": COMMITS, "meta": {"next_cursor": CURSOR}})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+", path):
+                self.reply(200, {"data": REPLIES[0], "ancestors": [COMMITS[0]]})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
+                self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
+            elif path == "/api/v1/notifications":
+                state.notifications_calls += 1
+                self.reply(200, {"data": NOTIFICATIONS, "read_at": "2026-10-21T08:00:00Z"})
+            else:
+                self.reply(404, {"message": "Not Found."})
+
+        def do_POST(self):
+            if not self.signed():
+                return
+            body = self.read_body()
+            self.record(body)
+            if self.forced():
+                return
+            path = self.path.split("?")[0]
+            star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", path)
+            if re.fullmatch(r"/api/v1/users/[^/]+/follow", path):
+                self.no_content()
+            elif star:
+                state.stars[star.group(1)] = True
+                self.reply(200, {"data": dict(COMMITS[0], starred=True, stars_count=5)})
+            elif path == "/api/v1/commits":
+                sent = json.loads(body)
+                self.reply(201, {"data": {"id": "new", "short_hash": "aaaaaaa",
+                                          "status": "pending", "body": sent["body"]}})
+            elif path == "/api/v1/devices":
+                self.reply(200, {"username": "zangetsu02"})
+            else:
+                self.reply(404, {"message": "Not Found."})
+
+        def do_DELETE(self):
+            if not self.signed():
+                return
+            self.record()
+            if self.forced():
+                return
+            star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", self.path.split("?")[0])
+            if re.fullmatch(r"/api/v1/users/[^/]+/follow", self.path):
+                self.no_content()
+            elif star:
+                state.stars[star.group(1)] = False
+                self.reply(200, {"data": dict(COMMITS[0], starred=False, stars_count=4)})
+            else:
+                self.reply(404, {"message": "Not Found."})
+
+    return Handler
+
+
+def start(public_key=""):
+    """Returns (state, url, stop). With a public key, every request is verified."""
+    state = State()
+    state.public_key = public_key
+    server = HTTPServer(("127.0.0.1", 0), handler_for(state))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return state, f"http://127.0.0.1:{server.server_port}", server.shutdown
+
+
+if __name__ == "__main__":
+    state, url, _ = start()
+    print(f"mock dev-null on {url}")
+    threading.Event().wait()

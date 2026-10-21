@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "zangetsu.devnull",
+  "name": "dev-null",
+  "version": "0.1.0",
+  "author": "Christian Palladini",
+  "license": "MIT",
+  "description": "dev-null.sh in the Omarchy shell: an unread badge in the bar, a glance popup, and a full keyboard-driven client drawn as a git log --graph.",
+  "kinds": [
+    "bar-widget",
+    "panel"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml",
+    "panel": "FullPanel.qml"
+  },
+  "barWidget": {
+    "displayName": "dev-null",
+    "description": "The dev-null.sh badge and popup. Open summons the full client: logs, threads, notifications, starred commits and profiles.",
+    "category": "Social",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 60,
+      "openRefreshIntervalSec": 20,
+      "bodyLines": 2
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Unread check while the panel is closed (seconds)",
+        "description": "Only the unread count is fetched on this timer, never the notification list: listing them marks them read on dev-null.sh and in the official app. The API allows 120 calls a minute, so this is slow by choice, not by need.",
+        "min": 30,
+        "max": 3600,
+        "step": 10,
+        "defaultValue": 60
+      },
+      {
+        "key": "openRefreshIntervalSec",
+        "type": "integer",
+        "label": "Feed refresh while the panel is open (seconds)",
+        "description": "How often the feed reloads while you are looking at it.",
+        "min": 5,
+        "max": 120,
+        "step": 5,
+        "defaultValue": 20
+      },
+      {
+        "key": "bodyLines",
+        "type": "integer",
+        "label": "Lines of a commit shown in the list",
+        "description": "Longer commits are cut with an ellipsis. Click one to read it on the site.",
+        "min": 1,
+        "max": 6,
+        "step": 1,
+        "defaultValue": 2
+      }
+    ]
+  }
+}

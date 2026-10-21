@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""dev-null.sh from the Omarchy bar.
+
+Usage: devnull <command> [arguments]
+
+  me                     who the paired key signs in as, and the unread count
+  pair <code> <verifier> redeem an authorization code; writes device.json
+  feed [--log L] [--cursor C]
+                         a log (latest, following, trending), 20 commits and the cursor for the next
+  notifications          what happened to you — THIS MARKS THEM READ everywhere
+  star <id>              star a commit
+  unstar <id>            take the star back
+  reply <id> <body>      reply to a commit; the answer says whether it is live
+  replies <id> [--cursor C]
+                         the direct replies to a commit, oldest first
+  commit <body> [--quote <id>]
+                         a new commit on the log, or a quote of <id>
+  show <id>              a commit, after the commits it replies to
+  user <name>            a profile
+  user-commits|followers|following <name> [--cursor C]
+                         a profile's commits, or the people around it
+  starred [--cursor C]   the commits you starred
+  follow|unfollow <name> follow someone, or stop
+
+Every command prints one JSON object on stdout. A failure prints
+{"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
+
+Requests are signed with an SSH key kept in ~/.local/share/omarchy-devnull,
+in the "devnull-api" namespace, which is the only thing that signature is
+good for: it cannot sign a git commit or log in anywhere.
+"""
+
+import json
+import os
+import re
+import secrets
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+NAMESPACE = "devnull-api"
+BASE_URL = os.environ.get("DEVNULL_URL", "https://dev-null.sh").rstrip("/")
+HOME = Path(os.environ.get("DEVNULL_HOME", Path.home() / ".local/share/omarchy-devnull"))
+KEY = HOME / "id_ed25519"
+TIMEOUT = 15
+
+
+def plugin_version():
+    """The manifest's version, so the User-Agent never drifts from the release."""
+    try:
+        manifest = Path(__file__).resolve().parent.parent / "manifest.json"
+        return json.loads(manifest.read_text()).get("version", "dev")
+    except (OSError, ValueError):
+        return "dev"
+
+
+# Cloudflare in front of dev-null.sh bans urllib's default agent (error 1010).
+USER_AGENT = f"omarchy-devnull/{plugin_version()}"
+
+# Only device_not_approved means the pairing is gone. invalid_signature shares
+# its 401 and usually means the clock is off, which re-pairing would not fix.
+KINDS = {
+    "device_not_approved": "auth",
+    "invalid_signature": "expired",
+    "commit_rules_required": "rules",
+    "rate_limited": "limited",
+}
+
+
+class BridgeError(Exception):
+    def __init__(self, message, kind="http"):
+        super().__init__(message)
+        self.kind = kind
+
+
+def signed_message(timestamp, nonce, method, uri, body):
+    """The five fields the server joins and checks, in its order."""
+    return "\n".join([timestamp, nonce, method, uri, body])
+
+
+def new_nonce():
+    return secrets.token_hex(16)
+
+
+def sign(message, key_path=None):
+    """An armored SSH signature over the message, in the devnull-api namespace."""
+    key_path = Path(key_path or KEY)
+    if not key_path.exists():
+        raise BridgeError(f"No key at {key_path}. Run scripts/setup-devnull.", "auth")
+    old_umask = os.umask(0o077)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "message"
+            payload.write_text(message)
+            result = subprocess.run(
+                ["ssh-keygen", "-Y", "sign", "-n", NAMESPACE, "-f", str(key_path), str(payload)],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                raise BridgeError(result.stderr.strip() or "ssh-keygen could not sign.", "auth")
+            return (Path(tmp) / "message.sig").read_text()
+    finally:
+        os.umask(old_umask)
+
+
+def header_signature(armored):
+    """An armored signature has newlines; a header cannot. The server accepts the
+    base64 body on one line, which is what the markers and whitespace leave."""
+    return re.sub(r"\s+|-----(BEGIN|END) SSH SIGNATURE-----", "", armored)
+
+
+def classify(status, code, message):
+    """Which kind of failure this is. The body's code decides, not the status."""
+    if status is None:
+        return "network"
+    if code in KINDS:
+        return KINDS[code]
+    if "signature expired" in (message or "").lower():
+        return "expired"
+    if status == 401:
+        return "auth"
+    return "http"
+
+
+def call(method, path, body=None):
+    """One signed request. `path` is signed exactly as sent, query included."""
+    payload = "" if body is None else json.dumps(body, separators=(",", ":"))
+    data = payload.encode() if payload else None
+    timestamp = str(int(time.time()))
+    nonce = new_nonce()
+    signature = sign(signed_message(timestamp, nonce, method, path, payload))
+
+    headers = {
+        "X-Devnull-Timestamp": timestamp,
+        "X-Devnull-Nonce": nonce,
+        "X-SSH-Signature": header_signature(signature),
+        "Accept": "application/json",
+        "User-Agent": USER_AGENT,
+    }
+    if data:
+        headers["Content-Type"] = "application/json"
+
+    request = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            raw = response.read().decode()
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode(errors="replace")
+        try:
+            answer = json.loads(raw)
+        except ValueError:
+            answer = {}
+        message = answer.get("message") or answer.get("error") or error.reason
+        raise BridgeError(message, classify(error.code, answer.get("code"), message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(error.reason), "network") from error
+
+
+def cmd_me():
+    return call("GET", "/api/v1/me")
+
+
+LOGS = ("latest", "following", "trending")
+
+
+def paged(args):
+    """Pulls --cursor out of the arguments; the rest come back untouched."""
+    args, cursor = list(args), None
+    if "--cursor" in args:
+        at = args.index("--cursor")
+        cursor = args[at + 1]
+        del args[at:at + 2]
+    return args, cursor
+
+
+def page(path, cursor):
+    """A Laravel resource page as {items, next_cursor}. The cursor is part of the
+    signed URI, so it goes on the path."""
+    if cursor:
+        path += "?" + urllib.parse.urlencode({"cursor": cursor})
+    answer = call("GET", path)
+    return answer.get("data", []), answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor")
+
+
+def cmd_feed(*args):
+    """A log: latest (default), following or trending."""
+    args, cursor = paged(args)
+    log = "latest"
+    if len(args) == 2 and args[0] == "--log":
+        log = args[1]
+    if log not in LOGS:
+        raise BridgeError(f"No log called {log!r}.", "http")
+    commits, cursor = page(f"/api/v1/log/{log}", cursor)
+    return {"commits": commits, "next_cursor": cursor}
+
+
+def cmd_replies(commit_id, *args):
+    """The direct replies to one commit, oldest first, as the site shows a thread."""
+    _, cursor = paged(args)
+    replies, cursor = page(f"/api/v1/commits/{commit_id}/replies", cursor)
+    return {"replies": replies, "next_cursor": cursor}
+
+
+def listing(path):
+    """A command for one paged list: {items, next_cursor}, like every other list."""
+    def command(*args):
+        _, cursor = paged(args)
+        items, cursor = page(path, cursor)
+        return {"items": items, "next_cursor": cursor}
+    return command
+
+
+def per_user(template):
+    """A paged list that hangs off one user, e.g. /users/{u}/commits."""
+    def command(username, *args):
+        return listing(template.format(username=urllib.parse.quote(username)))(*args)
+    return command
+
+
+def cmd_show(commit_id):
+    """A commit with the conversation above it, as one list: its ancestors,
+    oldest first, then the commit itself last — the shape every list has."""
+    answer = call("GET", f"/api/v1/commits/{urllib.parse.quote(commit_id)}")
+    return {"items": answer.get("ancestors", []) + [answer.get("data", {})], "next_cursor": None}
+
+
+def cmd_user(username):
+    return call("GET", f"/api/v1/users/{urllib.parse.quote(username)}").get("data", {})
+
+
+def cmd_follow(username):
+    # The route answers 204: what changed is what was asked.
+    call("POST", f"/api/v1/users/{urllib.parse.quote(username)}/follow")
+    return {"username": username, "is_followed": True}
+
+
+def cmd_unfollow(username):
+    call("DELETE", f"/api/v1/users/{urllib.parse.quote(username)}/follow")
+    return {"username": username, "is_followed": False}
+
+
+def cmd_notifications():
+    """Listing marks every notification read, upstream, for the web and the app too.
+    Only call this when the panel is opened, never on a timer."""
+    answer = call("GET", "/api/v1/notifications")
+    return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
+
+
+def cmd_star(commit_id):
+    # The star routes answer with the whole commit, as a CommitResource.
+    return call("POST", f"/api/v1/commits/{commit_id}/star").get("data", {})
+
+
+def cmd_unstar(commit_id):
+    return call("DELETE", f"/api/v1/commits/{commit_id}/star").get("data", {})
+
+
+def cmd_reply(commit_id, body):
+    """The body goes as typed: length and emptiness are the server's rules, and its
+    refusal is more useful than a guess made here."""
+    answer = call("POST", "/api/v1/commits", {"body": body, "parent_id": commit_id})
+    return answer.get("data", answer)
+
+
+def cmd_commit(body, *args):
+    """A new commit on the log, or a quote of another one with --quote <id>."""
+    payload = {"body": body}
+    if len(args) == 2 and args[0] == "--quote":
+        payload["quoted_commit_id"] = args[1]
+    answer = call("POST", "/api/v1/commits", payload)
+    return answer.get("data", answer)
+
+
+def cmd_pair(code, verifier):
+    """Redeem a code for a device. The key signing this is the one being approved."""
+    answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
+    fingerprint = subprocess.run(
+        ["ssh-keygen", "-lf", str(KEY)], capture_output=True, text=True, check=True
+    ).stdout.split()[1]
+    device = {
+        "username": answer.get("username") or answer.get("data", {}).get("username"),
+        "fingerprint": fingerprint,
+    }
+    HOME.mkdir(parents=True, exist_ok=True)
+    (HOME / "device.json").write_text(json.dumps(device, indent=1) + "\n")
+    return device
+
+
+COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
+            "notifications": cmd_notifications, "star": cmd_star,
+            "unstar": cmd_unstar, "reply": cmd_reply, "replies": cmd_replies,
+            "commit": cmd_commit, "show": cmd_show, "user": cmd_user, "follow": cmd_follow,
+            "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
+            "user-commits": per_user("/api/v1/users/{username}/commits"),
+            "followers": per_user("/api/v1/users/{username}/followers"),
+            "following": per_user("/api/v1/users/{username}/following")}
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] not in COMMANDS:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    try:
+        print(json.dumps(COMMANDS[argv[0]](*argv[1:])))
+        return 0
+    except BridgeError as error:
+        print(json.dumps({"error": str(error), "kind": error.kind}))
+        return 1
+    except Exception as error:  # the panel gets a line, not a traceback
+        print(json.dumps({"error": f"{type(error).__name__}: {error}", "kind": "http"}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

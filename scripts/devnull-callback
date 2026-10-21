@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Hands a devnull:// callback URL to the setup script that is waiting for it."""
+
+import os
+import sys
+from pathlib import Path
+
+base = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+fifo = Path(base) / "omarchy-devnull" / "callback"
+
+if len(sys.argv) > 1 and fifo.is_fifo():
+    with open(fifo, "w") as pipe:
+        pipe.write(sys.argv[1])

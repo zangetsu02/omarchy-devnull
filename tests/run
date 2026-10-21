@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Every test in one go. None of them touches dev-null.sh: tests/mock-devnull
+# stands in for it, so no test ever posts a real commit.
+set -euo pipefail
+cd "$(dirname "$0")"
+node model-test.mjs
+node service-test.mjs
+./signing-test
+./pairing-test
+./read-test
+./write-test

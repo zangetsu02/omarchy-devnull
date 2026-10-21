@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Offline checks for the pairing flow. Run with: tests/pairing-test
+
+Everything here is the arithmetic and the parsing. The one step that cannot be
+tested offline is the browser approving the key, which is Task 8's job.
+"""
+
+import base64
+import hashlib
+import importlib.machinery
+import importlib.util
+import re
+import subprocess
+import json
+import os
+import sys
+import time
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+HERE = Path(__file__).resolve().parent
+SETUP = HERE.parent / "scripts" / "setup-devnull"
+
+
+def load(path, name):
+    spec = importlib.util.spec_from_loader(
+        name, importlib.machinery.SourceFileLoader(name, str(path))
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main():
+    setup = load(SETUP, "setup_devnull")
+
+    # PKCE: the challenge is the url-safe base64 of the SHA-256 of the verifier,
+    # unpadded, and matches the server's ^[A-Za-z0-9_-]{43}$.
+    assert setup.challenge_for("x" * 64) == base64.urlsafe_b64encode(
+        hashlib.sha256(b"x" * 64).digest()
+    ).decode().rstrip("=")
+    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", setup.challenge_for(setup.new_verifier()))
+
+    # The verifier itself has to satisfy the server's own rule.
+    assert re.fullmatch(r"[A-Za-z0-9._~-]{43,128}", setup.new_verifier())
+
+    with tempfile.TemporaryDirectory() as tmp:
+        key = Path(tmp) / "id_ed25519"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key)],
+            check=True,
+        )
+        # The fingerprint sent is the server's shape.
+        assert re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", setup.fingerprint_of(key))
+
+        url = setup.authorize_url(key, "omarchy", "challenge" + "y" * 34, "state123")
+
+    # The authorize URL carries all six parameters and a devnull:// redirect.
+    params = parse_qs(urlparse(url).query)
+    assert set(params) == {"fingerprint", "device_name", "code_challenge",
+                           "code_challenge_method", "state", "redirect_uri"}
+    assert params["code_challenge_method"] == ["S256"]
+    assert params["redirect_uri"][0].startswith("devnull://")
+    assert urlparse(url).path == "/mobile/authorize"
+
+    # A code coming back under a different state is refused.
+    assert setup.accepts_callback("abc", "devnull://cb?code=1&state=zzz") == setup.IGNORE
+    assert setup.accepts_callback("abc", "devnull://cb?code=1&state=abc") == "1"
+    # Cancelling is told apart from a callback meant for someone else: one ends
+    # the setup with "you cancelled", the other keeps waiting.
+    assert setup.accepts_callback("abc", "devnull://cb?error=access_denied&state=abc") == setup.CANCELLED
+    assert setup.accepts_callback("abc", "devnull://cb?state=abc") == setup.IGNORE
+
+    # Waiting for a callback that never comes gives up instead of hanging for
+    # ever: closing the browser must not leave the setup wedged on the FIFO.
+    with tempfile.TemporaryDirectory() as tmp:
+        fifo = Path(tmp) / "callback"
+        os.mkfifo(fifo, 0o600)
+        started = time.monotonic()
+        assert setup.wait_for_callback(fifo, "abc", deadline=time.monotonic() + 1) is None
+        assert time.monotonic() - started < 3, "it waited past its own deadline"
+
+    # Review Focus: a scheme handler owned by something else stops the setup.
+    assert setup.handler_conflict("firefox.desktop") is True
+    assert setup.handler_conflict("omarchy-devnull-callback.desktop") is False
+    assert setup.handler_conflict("") is False
+
+    # Redeeming a code: the body is the server's two fields, and the answer is
+    # written to device.json for everything that comes after.
+    seen = {}
+
+    class Stub(BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen["path"] = self.path
+            seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen["signed"] = all(h in self.headers for h in
+                                 ("X-Devnull-Timestamp", "X-Devnull-Nonce", "X-SSH-Signature"))
+            answer = json.dumps({"username": "zangetsu02", "unread_notifications_count": 2}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(answer)))
+            self.end_headers()
+            self.wfile.write(answer)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Stub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                        "-f", str(home / "id_ed25519")], check=True)
+        environment = dict(os.environ,
+                           DEVNULL_URL=f"http://127.0.0.1:{server.server_port}",
+                           DEVNULL_HOME=str(home))
+        result = subprocess.run([str(SETUP.parent / "devnull"), "pair", "the-code", "v" * 50],
+                                capture_output=True, text=True, env=environment)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert seen["path"] == "/api/v1/devices"
+        assert seen["body"] == {"code": "the-code", "code_verifier": "v" * 50}
+        assert seen["signed"] is True
+        # device.json is what every later run reads to know who it is.
+        device = json.loads((home / "device.json").read_text())
+        assert device["username"] == "zangetsu02"
+        assert device["fingerprint"] == setup.fingerprint_of(home / "id_ed25519")
+
+    server.shutdown()
+
+    print("pairing: all checks passed")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

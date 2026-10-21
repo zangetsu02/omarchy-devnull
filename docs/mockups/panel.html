@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-null · mockup</title>
+<style>
+  /* Colori del tema attivo (gothic), da ~/.local/state/omarchy/current/theme/colors.toml */
+  :root {
+    --bg: #000; --bg-light: #1a1a1a; --sel: #303030;
+    --fg: #c8c8c8; --fg-dim: #8a8a8a; --fg-bright: #e4e4e4;
+    --muted: #646464; --accent: #bebebe;
+    --green: #8fa381; --yellow: #bda45c; --red: #e07d86;
+    --border: #3a3a3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #111; color: var(--fg);
+         font: 13px/1.45 "JetBrainsMono Nerd Font", "JetBrains Mono", monospace; }
+  h1 { font-size: 13px; color: var(--muted); font-weight: normal; margin: 24px 24px 8px; }
+  .stage { padding: 0 24px 40px; display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+  .note { color: var(--muted); max-width: 340px; margin-top: 6px; font-size: 12px; }
+
+  /* barra */
+  .bar { height: 30px; background: var(--bg); border-bottom: 1px solid var(--border);
+         display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding: 0 14px; }
+  .bar span { color: var(--fg-dim); }
+  .bar .dn { color: var(--fg-bright); position: relative; padding: 2px 6px; border: 1px solid var(--accent); }
+  .bar .dn b { position: absolute; top: -6px; right: -8px; background: var(--fg-bright); color: #000;
+               font-size: 10px; padding: 0 4px; }
+
+  /* superfici */
+  .popup { width: 640px; background: var(--bg); border: 1px solid var(--border); padding: 14px; }
+  .full  { width: 900px; height: 600px; background: var(--bg); border: 1px solid var(--border);
+           display: grid; grid-template-columns: 170px 1fr 330px; grid-template-rows: auto 1fr auto; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .title { color: var(--fg-bright); }
+  .dim { color: var(--muted); }
+  .sec { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 6px; }
+  .sep { border-top: 1px solid var(--border); margin: 12px -14px; }
+
+  /* card commit: il bordo che manca oggi */
+  .card { border: 1px solid var(--border); padding: 8px 10px; margin-bottom: 8px; }
+  .card:hover, .card.sel { border-color: var(--accent); background: var(--bg-light); }
+  .card .meta { display: flex; gap: 8px; font-size: 12px; }
+  .card .who { color: var(--fg-bright); }
+  .card .hash { color: var(--yellow); }
+  .card .body { margin: 4px 0 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .body.empty { color: var(--muted); font-style: italic; }
+  .acts { display: flex; gap: 14px; font-size: 12px; color: var(--fg-dim); }
+  .acts .on { color: var(--yellow); }
+
+  /* notifiche compatte */
+  .notif { display: flex; gap: 8px; padding: 4px 0; font-size: 12px; }
+  .notif .k { width: 14px; text-align: center; }
+  .notif.unread .who { color: var(--fg-bright); }
+  .notif .txt { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1; }
+
+  .foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+  .btn { border: 1px solid var(--border); padding: 3px 10px; color: var(--fg-bright); }
+  .btn:hover { border-color: var(--accent); }
+  kbd { border: 1px solid var(--border); padding: 0 4px; font: inherit; font-size: 11px; color: var(--fg-dim); }
+
+  /* vista grande */
+  .full .top { grid-column: 1 / -1; display: flex; justify-content: space-between; padding: 12px 16px;
+               border-bottom: 1px solid var(--border); }
+  .nav { border-right: 1px solid var(--border); padding: 12px 0; }
+  .nav div { padding: 6px 16px; color: var(--fg-dim); }
+  .nav div.sel { color: var(--fg-bright); background: var(--sel); border-left: 2px solid var(--accent); padding-left: 14px; }
+  .nav .count { float: right; color: var(--fg-bright); }
+  .list { padding: 12px 14px; overflow: auto; }
+  .detail { border-left: 1px solid var(--border); padding: 14px; overflow: auto; }
+  .detail .body { color: var(--fg-bright); margin: 8px 0 12px; }
+  .reply { border-left: 2px solid var(--border); padding: 4px 0 4px 10px; margin-bottom: 10px; font-size: 12px; }
+  .input { border: 1px solid var(--accent); padding: 8px; color: var(--muted); margin-top: 10px; min-height: 54px; }
+  .full .bot { grid-column: 1 / -1; border-top: 1px solid var(--border); padding: 8px 16px;
+               display: flex; gap: 18px; font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="bar"><span>󰂯</span><span>⚡</span><span class="dn">/dev/null<b>3</b></span><span></span><span>󰕾</span></div>
+
+<h1>1 · Clic sull'icona: il riquadro piccolo, come la scheda della canzone di Spotify</h1>
+<div class="stage">
+  <div class="popup">
+    <div class="head"><span class="title">/dev/null</span><span class="dim">@zangetsu02</span></div>
+
+    <div class="sec">Per te · 3 nuove</div>
+    <div class="notif unread"><span class="k">↩</span><span class="txt"><span class="who">pptx704</span> ha risposto: Seems like github pages tho</span></div>
+    <div class="notif unread"><span class="k">★</span><span class="txt"><span class="who">ndk98z</span> ha messo una stella a d453634</span></div>
+    <div class="notif unread"><span class="k">+</span><span class="txt"><span class="who">marta_dev</span> ti segue</span></div>
+
+    <div class="sec">Latest</div>
+    <div class="card">
+      <div class="meta"><span class="who">@ndk98z</span><span class="hash">36795c7</span><span class="dim">7m</span></div>
+      <div class="body">Finally moved my dotfiles to chezmoi. Should have done it years ago, templates per machine are a game changer.</div>
+      <div class="acts"><span class="on">★ 12</span><span>↩ 3</span></div>
+    </div>
+    <div class="card">
+      <div class="meta"><span class="who">@zangetsu02</span><span class="hash">d453634</span><span class="dim">14m</span></div>
+      <div class="body">I built chorei, a tool that helps me prepare my daily standup.</div>
+      <div class="acts"><span>★ 4</span><span>↩ 1</span></div>
+    </div>
+    <div class="card">
+      <div class="meta"><span class="who">@pptx704</span><span class="hash">a91c0e2</span><span class="dim">22m</span></div>
+      <div class="body">Hot take: most "microservices" are a monolith with extra network calls and a worse debugger.</div>
+      <div class="acts"><span>★ 31</span><span>↩ 9</span></div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="foot"><span class="dim">aggiornato 20s fa</span><span class="btn">Open ↗</span></div>
+  </div>
+  <div class="note">
+    Solo ciò che serve al volo: chi ti ha cercato e gli ultimi 3 commit, ognuno nel suo riquadro col bordo.
+    Il bordo si accende al passaggio del mouse. Clic su un commit = Open già posizionata su quel commit.
+    Nessuna azione qui: per stellare o rispondere si apre la vista grande.
+  </div>
+</div>
+
+<h1>2 · Open: la vista grande dentro la shell, come il full player di Spotify</h1>
+<div class="stage">
+  <div class="full">
+    <div class="top"><span class="title">/dev/null</span><span class="dim">@zangetsu02 · aggiornato 20s fa</span></div>
+
+    <div class="nav">
+      <div class="sel">Latest</div>
+      <div>Following</div>
+      <div>Per te <span class="count">3</span></div>
+      <div>I miei commit</div>
+    </div>
+
+    <div class="list">
+      <div class="card sel">
+        <div class="meta"><span class="who">@ndk98z</span><span class="hash">36795c7</span><span class="dim">7m</span></div>
+        <div class="body">Finally moved my dotfiles to chezmoi. Should have done it years ago, templates per machine are a game changer.</div>
+        <div class="acts"><span class="on">★ 12</span><span>↩ 3</span></div>
+      </div>
+      <div class="card">
+        <div class="meta"><span class="who">@zangetsu02</span><span class="hash">d453634</span><span class="dim">14m</span></div>
+        <div class="body">I built chorei, a tool that helps me prepare my daily standup.</div>
+        <div class="acts"><span>★ 4</span><span>↩ 1</span></div>
+      </div>
+      <div class="card">
+        <div class="meta"><span class="who">@pptx704</span><span class="hash">a91c0e2</span><span class="dim">22m</span></div>
+        <div class="body">Hot take: most "microservices" are a monolith with extra network calls and a worse debugger.</div>
+        <div class="acts"><span>★ 31</span><span>↩ 9</span></div>
+      </div>
+      <div class="card">
+        <div class="meta"><span class="who">@lena</span><span class="hash">0be44d1</span><span class="dim">40m</span></div>
+        <div class="body empty">(commit vuoto)</div>
+        <div class="acts"><span>★ 0</span><span>↩ 0</span></div>
+      </div>
+      <div class="dim" style="text-align:center;padding:6px">più vecchi…</div>
+    </div>
+
+    <div class="detail">
+      <div class="meta"><span class="who">@ndk98z</span> <span class="hash">36795c7</span> <span class="dim">· 7m</span></div>
+      <div class="body">Finally moved my dotfiles to chezmoi. Should have done it years ago, templates per machine are a game changer.</div>
+      <div class="acts" style="margin-bottom:14px"><span class="on">★ 12 · stellato</span><span>↩ 3</span><span>↗ sul sito</span></div>
+      <div class="sec">Risposte</div>
+      <div class="reply"><span class="who" style="color:var(--fg-bright)">@marta_dev</span> <span class="dim">5m</span><br>which template engine, the go one?</div>
+      <div class="reply"><span class="who" style="color:var(--fg-bright)">@ndk98z</span> <span class="dim">4m</span><br>yep, text/template. took an hour to get used to.</div>
+      <div class="input">Rispondi…</div>
+    </div>
+
+    <div class="bot"><span><kbd>j</kbd><kbd>k</kbd> muovi</span><span><kbd>s</kbd> stella</span><span><kbd>r</kbd> rispondi</span><span><kbd>o</kbd> apri sul sito</span><span><kbd>tab</kbd> sezione</span><span><kbd>esc</kbd> chiudi</span></div>
+  </div>
+</div>
+
+</body>
+</html>

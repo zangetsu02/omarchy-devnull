@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""The write half of the bridge, against the mock. Run with: tests/write-test"""
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE.parent / "scripts" / "devnull"
+ID = "01a15d37-0511-7071-a1ae-d28a502b4a24"
+
+spec = importlib.util.spec_from_loader(
+    "mock_devnull", importlib.machinery.SourceFileLoader("mock_devnull", str(HERE / "mock-devnull"))
+)
+mock_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mock_module)
+
+
+def main():
+    tmp = tempfile.TemporaryDirectory()
+    home = Path(tmp.name)
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                    "-f", str(home / "id_ed25519")], check=True)
+    state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
+    environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
+
+    def run(*args):
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=environment)
+        return json.loads(result.stdout or "{}"), result.returncode
+
+    try:
+        # A star is a POST with no body, and the signed URI is the star route.
+        answer, code = run("star", ID)
+        assert code == 0 and answer["starred"] is True, answer
+        assert state.last_method == "POST" and state.last_uri == f"/api/v1/commits/{ID}/star"
+
+        # Un-starring is the same route, deleted.
+        answer, code = run("unstar", ID)
+        assert code == 0 and answer["starred"] is False
+        assert state.last_method == "DELETE" and state.last_uri == f"/api/v1/commits/{ID}/star"
+
+        # A reply sends body and parent_id as JSON, and the bytes signed are the bytes sent.
+        answer, code = run("reply", ID, "Agreed")
+        assert code == 0, answer
+        assert json.loads(state.last_body) == {"body": "Agreed", "parent_id": ID}
+        assert state.signature_covered_body is True
+
+        # A moderated reply reports what came back, not an assumption.
+        assert answer["status"] == "pending"
+        assert answer["short_hash"] == "aaaaaaa"
+
+        # A new commit has no parent; a quote names the quoted commit instead.
+        answer, code = run("commit", "shipped it")
+        assert code == 0 and json.loads(state.last_body) == {"body": "shipped it"}
+        answer, code = run("commit", "so true", "--quote", ID)
+        assert code == 0
+        assert json.loads(state.last_body) == {"body": "so true", "quoted_commit_id": ID}
+
+        # Following answers 204; the bridge says what changed.
+        answer, code = run("follow", "pptx704")
+        assert code == 0 and answer == {"username": "pptx704", "is_followed": True}
+        assert state.last_method == "POST" and state.last_uri == "/api/v1/users/pptx704/follow"
+        answer, code = run("unfollow", "pptx704")
+        assert code == 0 and answer["is_followed"] is False and state.last_method == "DELETE"
+
+        # Review Focus: the server's 422 reaches the caller as its own text.
+        state.next_status = 422
+        state.next_response = {"message": "The body field is required."}
+        answer, code = run("reply", ID, "  ")
+        assert code == 1 and answer["error"] == "The body field is required."
+        assert answer["kind"] == "http"
+
+        # An over-long body is the server's call too: it is sent, not trimmed here.
+        state.next_status = 422
+        state.next_response = {"message": "The body may not be greater than 4000 characters."}
+        answer, code = run("reply", ID, "x" * 4001)
+        assert code == 1 and answer["kind"] == "http"
+        assert json.loads(state.last_body)["body"] == "x" * 4001
+
+        # The mock is the only stand-in for upstream, so it has to check the one
+        # property that would silently break against the real server: that the
+        # signature really covers the bytes of the body.
+        assert state.verified_bodies > 0, "no request was signature-checked"
+        # And it has to be able to refuse: a signature over a different body fails.
+        assert mock_module.verify_signed_request(
+            public_key=(home / "id_ed25519.pub").read_text(),
+            timestamp="1771600000", nonce="a" * 32, method="POST",
+            uri="/api/v1/commits", body='{"body":"tampered"}',
+            signature=state.last_signature) is False
+
+        print("write: all checks passed")
+    finally:
+        stop()
+        tmp.cleanup()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
