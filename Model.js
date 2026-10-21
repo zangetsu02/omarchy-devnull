@@ -96,3 +96,64 @@ function pollDelay(panelOpen, settings) {
     seconds = Math.max(bounds.min, Math.min(bounds.max, seconds))
     return seconds * 1000
 }
+
+// How many auth failures in a row before the icon admits the pairing is gone.
+// A revoked device never recovers, so the panel has to say so; a flaky network
+// does, so it must not count.
+var BROKEN_AFTER = 3
+
+function tickCalls(panelOpen, broken) {
+    if (broken) return []
+    // Closed, only /me: it carries the unread count without marking anything read.
+    return panelOpen ? ["feed"] : ["me"]
+}
+
+function openCalls() {
+    // The one place notifications are listed, which is also what marks them read.
+    return ["notifications", "feed"]
+}
+
+function nextFailureCount(count, result) {
+    if (!result) return 0
+    if (result.kind === "auth") return count + 1
+    return count
+}
+
+function isBroken(count) {
+    return count >= BROKEN_AFTER
+}
+
+function errorLine(result) {
+    if (!result) return ""
+    switch (result.kind) {
+    case "expired":
+        return "dev-null refused the signature. Check this machine's clock."
+    case "auth":
+        return "This machine is not paired any more. Run scripts/setup-devnull."
+    case "rules":
+        return "Accept the commit rules on dev-null.sh once, then try again."
+    case "limited":
+        return "Too many requests for now. It will catch up by itself."
+    case "network":
+        return "dev-null is out of reach."
+    default:
+        return result.error || "Something went wrong."
+    }
+}
+
+function withStar(commit, starred) {
+    var count = commit.stars_count || 0
+    if (starred === commit.starred) return commit
+    count = starred ? count + 1 : Math.max(0, count - 1)
+    return {
+        id: commit.id,
+        short_hash: commit.short_hash,
+        body: commit.body,
+        author: commit.author,
+        stars_count: count,
+        starred: starred,
+        replies_count: commit.replies_count,
+        status: commit.status,
+        html_url: commit.html_url
+    }
+}
