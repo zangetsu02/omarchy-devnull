@@ -83,6 +83,14 @@ def main():
             "allowed_signers", "id_ed25519", "id_ed25519.pub", "sig",
         ]
 
+        # An armored signature cannot go in an HTTP header: it has newlines.
+        # The server also takes the base64 body on one line, so that is what we send.
+        flat = devnull.header_signature(signature)
+        assert "\n" not in flat and "BEGIN SSH SIGNATURE" not in flat
+        assert flat.isascii() and flat.strip() == flat
+        import base64 as b64
+        assert b64.b64decode(flat).startswith(b"SSHSIG")
+
     # A clock-skew rejection is its own kind, not a generic error and NOT auth:
     # upstream answers 401 for both invalid_signature and device_not_approved,
     # and only the latter may count toward the re-pair state.

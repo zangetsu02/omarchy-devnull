@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Pair this machine with dev-null.sh, once.
+
+It makes an SSH key that does nothing else, asks dev-null to approve it as a
+device, and leaves the key and device.json in ~/.local/share/omarchy-devnull.
+
+The key is never added to your SSH agent, never uploaded to GitHub, and its
+signatures are scoped to the "devnull-api" namespace, so they cannot sign a git
+commit or authenticate anywhere else.
+"""
+
+import base64
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlparse
+
+BASE_URL = os.environ.get("DEVNULL_URL", "https://dev-null.sh").rstrip("/")
+HOME = Path(os.environ.get("DEVNULL_HOME", Path.home() / ".local/share/omarchy-devnull"))
+KEY = HOME / "id_ed25519"
+SCRIPTS = Path(__file__).resolve().parent
+DESKTOP_NAME = "omarchy-devnull-callback.desktop"
+DESKTOP = Path.home() / ".local/share/applications" / DESKTOP_NAME
+REDIRECT_URI = "devnull://omarchy/callback"
+# A code lives five minutes upstream; waiting longer than that is waiting for nothing.
+CODE_LIFETIME = 300
+
+
+def runtime_dir():
+    base = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(base) / "omarchy-devnull"
+
+
+def new_verifier():
+    """RFC 7636, inside the server's ^[A-Za-z0-9._~-]{43,128}$."""
+    return secrets.token_urlsafe(64)
+
+
+def challenge_for(verifier):
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+def fingerprint_of(key_path):
+    result = subprocess.run(
+        ["ssh-keygen", "-lf", str(key_path)], capture_output=True, text=True, check=True
+    )
+    return result.stdout.split()[1]
+
+
+def authorize_url(key_path, device_name, challenge, state):
+    query = urlencode({
+        "fingerprint": fingerprint_of(key_path),
+        "device_name": device_name,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+        "redirect_uri": REDIRECT_URI,
+    })
+    return f"{BASE_URL}/mobile/authorize?{query}"
+
+
+def accepts_callback(state, url):
+    """The code, or False when the callback is for someone else or is a refusal."""
+    params = parse_qs(urlparse(url).query)
+    if params.get("state", [""])[0] != state:
+        return False
+    code = params.get("code", [""])[0]
+    return code or False
+
+
+def handler_conflict(current):
+    """Whether something other than us already owns x-scheme-handler/devnull."""
+    current = (current or "").strip()
+    return bool(current) and current != DESKTOP_NAME
+
+
+def current_handler():
+    result = subprocess.run(
+        ["xdg-mime", "query", "default", "x-scheme-handler/devnull"],
+        capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
+def ensure_key():
+    HOME.mkdir(parents=True, exist_ok=True)
+    HOME.chmod(0o700)
+    if not KEY.exists():
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "omarchy-devnull",
+             "-f", str(KEY)],
+            check=True,
+        )
+    KEY.chmod(0o600)
+
+
+def register_handler():
+    DESKTOP.parent.mkdir(parents=True, exist_ok=True)
+    DESKTOP.write_text(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=dev-null callback\n"
+        f"Exec={SCRIPTS / 'devnull-callback'} %u\n"
+        "NoDisplay=true\n"
+        "Terminal=false\n"
+        "MimeType=x-scheme-handler/devnull;\n"
+    )
+    subprocess.run(["update-desktop-database", str(DESKTOP.parent)], capture_output=True)
+    subprocess.run(["xdg-mime", "default", DESKTOP_NAME, "x-scheme-handler/devnull"],
+                   capture_output=True)
+
+
+def wait_for_callback(fifo, state):
+    """Read one callback URL, or time out when the code would have expired anyway."""
+    deadline = time.time() + CODE_LIFETIME
+    while time.time() < deadline:
+        with open(fifo, "r") as pipe:  # blocks until the handler writes
+            url = pipe.read().strip()
+        if not url:
+            continue
+        code = accepts_callback(state, url)
+        if code:
+            return code
+        print("That callback was not the one we asked for; still waiting.", file=sys.stderr)
+    return None
+
+
+def main():
+    existing = current_handler()
+    if handler_conflict(existing):
+        print(f"{existing} already handles devnull:// links. Pairing would take that over,\n"
+              f"so nothing was changed. Remove it, or run:\n"
+              f"  xdg-mime default {DESKTOP_NAME} x-scheme-handler/devnull", file=sys.stderr)
+        return 1
+
+    ensure_key()
+    register_handler()
+
+    fifo_dir = runtime_dir()
+    fifo_dir.mkdir(parents=True, exist_ok=True)
+    fifo = fifo_dir / "callback"
+    if fifo.exists():
+        fifo.unlink()
+    os.mkfifo(fifo, 0o600)
+
+    verifier = new_verifier()
+    state = secrets.token_urlsafe(16)
+    url = authorize_url(KEY, os.uname().nodename or "omarchy", challenge_for(verifier), state)
+
+    print("Approve this machine in the browser that just opened.")
+    subprocess.run(["xdg-open", url], capture_output=True)
+
+    try:
+        code = wait_for_callback(fifo, state)
+    finally:
+        fifo.unlink(missing_ok=True)
+
+    if not code:
+        print("No code came back, or you cancelled. Nothing was paired.", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        [str(SCRIPTS / "devnull"), "pair", code, verifier], capture_output=True, text=True
+    )
+    answer = json.loads(result.stdout or "{}")
+    if result.returncode != 0:
+        print(answer.get("error", "Pairing failed."), file=sys.stderr)
+        return 1
+
+    print(f"Paired as @{answer.get('username', '?')}.")
+    print("If you have never accepted the commit rules on dev-null.sh, do that once in\n"
+          "the browser, or your replies will be refused.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

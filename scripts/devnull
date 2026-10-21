@@ -4,6 +4,7 @@
 Usage: devnull <command> [arguments]
 
   me                     who the paired key signs in as, and the unread count
+  pair <code> <verifier> redeem an authorization code; writes device.json
 
 Every command prints one JSON object on stdout. A failure prints
 {"error": "<line>", "kind": "<kind>"} and exits 1 — never a traceback.
@@ -15,6 +16,7 @@ good for: it cannot sign a git commit or log in anywhere.
 
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -76,6 +78,12 @@ def sign(message, key_path=None):
         os.umask(old_umask)
 
 
+def header_signature(armored):
+    """An armored signature has newlines; a header cannot. The server accepts the
+    base64 body on one line, which is what the markers and whitespace leave."""
+    return re.sub(r"\s+|-----(BEGIN|END) SSH SIGNATURE-----", "", armored)
+
+
 def classify(status, code, message):
     """Which kind of failure this is. The body's code decides, not the status."""
     if status is None:
@@ -100,7 +108,7 @@ def call(method, path, body=None):
     headers = {
         "X-Devnull-Timestamp": timestamp,
         "X-Devnull-Nonce": nonce,
-        "X-SSH-Signature": signature,
+        "X-SSH-Signature": header_signature(signature),
         "Accept": "application/json",
     }
     if data:
@@ -127,7 +135,22 @@ def cmd_me():
     return call("GET", "/api/v1/me")
 
 
-COMMANDS = {"me": cmd_me}
+def cmd_pair(code, verifier):
+    """Redeem a code for a device. The key signing this is the one being approved."""
+    answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
+    fingerprint = subprocess.run(
+        ["ssh-keygen", "-lf", str(KEY)], capture_output=True, text=True, check=True
+    ).stdout.split()[1]
+    device = {
+        "username": answer.get("username") or answer.get("data", {}).get("username"),
+        "fingerprint": fingerprint,
+    }
+    HOME.mkdir(parents=True, exist_ok=True)
+    (HOME / "device.json").write_text(json.dumps(device, indent=1) + "\n")
+    return device
+
+
+COMMANDS = {"me": cmd_me, "pair": cmd_pair}
 
 
 def main():
