@@ -6,6 +6,8 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
+// The bar icon and its popup: who reached you and the last few commits, at a
+// glance. Starring, replying and scrolling back live in the full view (Open).
 Panel {
   id: root
   moduleName: "zangetsu.devnull"
@@ -14,31 +16,17 @@ Panel {
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
-  readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color dim: Color.muted
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-
-  readonly property color cardFill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.05)
-  readonly property color cardLine: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
 
   readonly property int bodyLines: setting("bodyLines", 2)
   readonly property var badge: Model.badgeFor(feed.unreadCount, feed.broken)
+  // How many of each the popup shows; the rest is one click away in Open.
+  readonly property int shownNotifications: 3
+  readonly property int shownCommits: 3
 
-  // Which commit has its reply field open. Kept as an id, not an index: the
-  // feed is replaced wholesale on every refresh.
-  property string replyingTo: ""
-  // Kept here, not in the delegate: the feed is replaced wholesale on refresh,
-  // which destroys the TextField someone may be typing in.
-  property var drafts: ({})
-
-  Connections {
-    target: feed
-    function onReplyDone(id, answer) {
-      if (!Model.keepsDraft(answer)) {
-        root.drafts = Model.clearDraft(root.drafts, id)
-        if (root.replyingTo === id) root.replyingTo = ""
-      }
-    }
-  }
+  property double now: Date.now()
+  Timer { interval: 60000; repeat: true; running: root.opened; onTriggered: root.now = Date.now() }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -50,11 +38,22 @@ Panel {
   }
 
   onOpenedChanged: {
-    if (opened) feed.openPanel()
-    else {
-      feed.closePanel()
-      root.replyingTo = ""
-    }
+    if (opened) {
+      root.now = Date.now()
+      feed.openPanel()
+    } else feed.closePanel()
+  }
+
+  // Same dance as the Spotify full player: hide first, summon on the next
+  // turn, so Wayland unmaps the old surface before the shell maps it again.
+  function openFull(commitId) {
+    root.close()
+    if (!bar || !bar.shell) return
+    var payload = JSON.stringify({ commit: commitId || "" })
+    bar.shell.hide("zangetsu.devnull")
+    Qt.callLater(function () {
+      if (root.bar && root.bar.shell) root.bar.shell.summon("zangetsu.devnull", payload)
+    })
   }
 
   BarIconButton {
@@ -99,188 +98,92 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(420))
+    contentWidth: panel.fittedContentWidth(Style.space(640))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(760))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: root.close()
-      onTextKey: function (t) { if (t === "r" || t === "R") feed.refresh() }
-
-      Flickable {
-        id: panelFlick
-        anchors.fill: parent
-        contentWidth: width
-        contentHeight: column.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+      onTextKey: function (t) {
+        if (t === "r" || t === "R") feed.refresh()
+        else if (t === "o" || t === "O") root.openFull("")
+      }
 
       Column {
         id: column
-        width: panelFlick.width
-        spacing: Style.space(10)
+        width: parent.width
+        spacing: Style.space(8)
 
-        // --- What happened to you -----------------------------------------
+        Item {
+          width: column.width
+          height: title.implicitHeight
+          Text {
+            id: title
+            text: "/dev/null"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
+          }
+          Text {
+            anchors.right: parent.right
+            anchors.baseline: title.baseline
+            text: feed.username !== "" ? "@" + feed.username : ""
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+        }
+
+        // --- Who reached you --------------------------------------------------
 
         Text {
           visible: feed.notifications.length > 0
-          text: "What happened to you"
+          text: "FOR YOU"
           color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.space(9)
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 1
+          topPadding: Style.space(4)
         }
 
         Repeater {
-          model: feed.notifications
-          Rectangle {
+          model: feed.notifications.slice(0, root.shownNotifications)
+          Text {
             width: column.width
-            height: line.implicitHeight + Style.space(12)
-            radius: Style.space(6)
-            color: root.cardFill
-            border.color: root.cardLine
-            border.width: 1
-
-            Text {
-              id: line
-              anchors.fill: parent
-              anchors.margins: Style.space(6)
-              text: Model.clampBody(Model.summaryFor(modelData), root.bodyLines, 52)
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(10)
-              wrapMode: Text.NoWrap
-            }
+            text: Model.summaryFor(modelData)
+            color: modelData.read_at ? root.dim : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
           }
         }
 
-        // --- The feed -------------------------------------------------------
+        // --- The last few commits ---------------------------------------------
 
         Text {
-          text: "Latest"
+          text: "LATEST"
           color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.space(9)
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 1
+          topPadding: Style.space(4)
         }
 
         Repeater {
-          model: feed.commits
-          Rectangle {
-            id: card
-            readonly property var row: Model.rowFor(modelData)
+          model: feed.commits.slice(0, root.shownCommits)
+          CommitCard {
+            required property var modelData
             width: column.width
-            height: body.y + body.implicitHeight + reply.height + Style.space(10)
-            radius: Style.space(6)
-            color: root.cardFill
-            border.color: root.cardLine
-            border.width: 1
-
-            Text {
-              id: heading
-              x: Style.space(6)
-              y: Style.space(5)
-              text: card.row.hash + "  " + card.row.handle + (card.row.pending ? "  (held)" : "")
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(9)
-            }
-
-            Text {
-              id: body
-              x: Style.space(6)
-              y: heading.y + heading.implicitHeight + Style.space(3)
-              width: parent.width - Style.space(60)
-              text: Model.clampBody(card.row.body, root.bodyLines, 48)
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(10)
-              wrapMode: Text.NoWrap
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: Quickshell.execDetached(["xdg-open", card.row.url])
-              }
-            }
-
-            // Star: the count sits next to it so the tap has something to move.
-            Text {
-              id: star
-              text: (card.row.starred ? "★ " : "☆ ") + card.row.stars
-              color: card.row.starred ? root.urgent : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(10)
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(8)
-              y: heading.y
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: feed.toggleStar(card.row.id)
-              }
-            }
-
-            Text {
-              text: "reply"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(9)
-              anchors.right: star.right
-              y: star.y + star.implicitHeight + Style.space(4)
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: root.replyingTo = (root.replyingTo === card.row.id ? "" : card.row.id)
-              }
-            }
-
-            Item {
-              id: reply
-              width: parent.width
-              height: root.replyingTo === card.row.id ? field.implicitHeight + Style.space(8) : 0
-              visible: height > 0
-              y: body.y + body.implicitHeight + Style.space(4)
-
-              TextField {
-                id: field
-                width: parent.width - Style.space(12)
-                x: Style.space(6)
-                placeholderText: "reply as you would on the site"
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.space(10)
-                // Restored from the draft, so a refresh mid-sentence costs nothing.
-                text: Model.draftFor(root.drafts, card.row.id)
-                onTextEdited: root.drafts = Model.withDraft(root.drafts, card.row.id, text)
-                // Not cleared here: the server may refuse it, and then what was
-                // typed is the only copy. onReplyDone clears it once it lands.
-                onAccepted: feed.sendReply(card.row.id, text)
-              }
-            }
+            row: Model.rowFor(modelData)
+            bodyLines: root.bodyLines
+            fontFamily: root.fontFamily
+            foreground: root.foreground
+            dim: root.dim
+            now: root.now
+            onClicked: root.openFull(row.id)
           }
-        }
-
-        Text {
-          visible: feed.nextCursor !== ""
-          text: "older…"
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.space(9)
-          MouseArea { anchors.fill: parent; onClicked: feed.loadMore() }
-        }
-
-        // --- What went wrong -------------------------------------------------
-
-        Text {
-          visible: feed.replyStatus !== ""
-          text: feed.replyStatus
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.space(9)
-          width: column.width
-          wrapMode: Text.WordWrap
         }
 
         Text {
@@ -288,11 +191,35 @@ Panel {
           text: feed.lastError
           color: root.urgent
           font.family: root.fontFamily
-          font.pixelSize: Style.space(9)
+          font.pixelSize: Style.font.bodySmall
           width: column.width
           wrapMode: Text.WordWrap
         }
-      }
+
+        PanelSeparator { width: column.width; foreground: root.foreground }
+
+        Item {
+          width: column.width
+          height: openButton.implicitHeight
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: feed.updatedAt !== "" ? "updated " + Model.ageFor(feed.updatedAt, root.now) : ""
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+          Button {
+            id: openButton
+            anchors.right: parent.right
+            text: "Open"
+            iconText: "↗"
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            tooltipText: "Open the full view (o)"
+            onClicked: root.openFull("")
+          }
+        }
       }
     }
   }

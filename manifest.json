@@ -7,10 +7,12 @@
   "license": "MIT",
   "description": "dev-null.sh in the Omarchy bar: the Latest feed, what happened to you, a star and a reply. Everything bigger opens the website.",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "barWidget": "Panel.qml",
+    "panel": "FullPanel.qml"
   },
   "barWidget": {
     "displayName": "dev-null",
