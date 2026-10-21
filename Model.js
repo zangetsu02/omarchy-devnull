@@ -66,12 +66,33 @@ function rowFor(commit) {
         link: commit.link_preview && commit.link_preview.title ? {
             title: commit.link_preview.title,
             url: commit.link_preview.url || "",
-            site: commit.link_preview.site_name || hostOf(commit.link_preview.url)
+            site: commit.link_preview.site_name || hostOf(commit.link_preview.url),
+            image: webUrl(commit.link_preview.image_url)
         } : null,
         quoted: commit.quoted_commit && commit.quoted_commit.id ? rowFor(commit.quoted_commit) : null,
-        images: (commit.images || []).length,
+        images: imagesOf(commit),
         preview: ((commit.reply_preview || {}).data) || []
     }
+}
+
+// The pictures attached to a commit, with what the layout needs to size them
+// before they load. Anything that is not a web URL is left out.
+function imagesOf(commit) {
+    return (commit.images || []).map(function (image) {
+        return {
+            url: webUrl(image.url),
+            width: image.width > 0 ? image.width : 1,
+            height: image.height > 0 ? image.height : 1,
+            alt: image.description || ""
+        }
+    }).filter(function (image) { return image.url !== "" })
+}
+
+// How big one picture is drawn: as wide as the column allows, but never
+// taller than `maxHeight`, keeping its proportions either way.
+function fitImage(image, maxWidth, maxHeight) {
+    var scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1)
+    return { width: Math.round(image.width * scale), height: Math.round(image.height * scale) }
 }
 
 function hostOf(url) {

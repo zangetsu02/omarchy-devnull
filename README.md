@@ -10,7 +10,8 @@ way `git log --graph` would draw it.
   `o` or **Open** goes to the full client.
 - **The full client:** the following, latest and trending logs on a commit
   graph, threads opened in place, notifications, your starred commits and
-  anyone's profile. Star, reply, quote, commit and follow without leaving it.
+  anyone's profile, with pictures and link cards drawn in place. Star, reply,
+  quote, commit and follow without leaving it.
 
 It follows the Omarchy theme for background, text and font, and uses
 dev-null's own palette for the author lanes and the action blue.
@@ -37,6 +38,9 @@ Then pair this machine once, as below.
 | `y` · `enter` | copy the link · open it on the site |
 | `g l` `g n` `g s` `g p` | log · notifications · starred · your profile |
 | `⌫` · `R` · `esc` | back · refresh · close |
+
+Click a picture to see it full size; there `←` `→` step through a commit's
+pictures, `enter` opens the one in front in the browser and `esc` closes it.
 
 ## Why it pairs a device instead of logging in
 
@@ -124,7 +128,8 @@ The site is weeks old and its API is undocumented. Shapes can change.
 | `Panel.qml`, `CommitCard.qml` | The bar icon and its popup. |
 | `FullPanel.qml` | The full client: layout, keys, navigation, and the actions rows call. |
 | `LogRow.qml`, `NoticeRow.qml`, `ProfilePage.qml`, `Composer.qml`, `CommitList.qml` | Its pieces. |
-| `Avatar.qml`, `ActionButton.qml`, `Mono.qml` | Shared building blocks. |
+| `CommitImages.qml`, `ImageViewer.qml` | A commit's pictures, and the full-size viewer. |
+| `Picture.qml`, `Avatar.qml`, `ActionButton.qml`, `Mono.qml` | Shared building blocks. |
 
 Rows and pages only talk to `FullPanel`; it is the one that knows the service.
 

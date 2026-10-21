@@ -167,3 +167,22 @@ const dark = Model.paletteFor(0)
 assert.equal(Model.noticeTint("replied", dark), dark.primary)
 assert.equal(Model.noticeTint("starred", dark), dark.lanes[5])
 assert.equal(Model.noticeTint("unknown", dark), "")
+
+// Images keep their size for the layout; a non-web URL is dropped.
+const pictured = Model.rowFor({
+  id: "i", author: { username: "u" },
+  images: [
+    { url: "https://dev-null.sh/commit-images/a", width: 800, height: 400, description: "a chart" },
+    { url: "file:///etc/passwd", width: 10, height: 10 },
+  ],
+  link_preview: { title: "t", url: "https://x.dev", image_url: "https://x.dev/card.png" },
+})
+assert.equal(pictured.images.length, 1)
+assert.equal(pictured.images[0].alt, "a chart")
+assert.equal(pictured.link.image, "https://x.dev/card.png")
+assert.equal(Model.rowFor({ id: "n" }).images.length, 0)
+
+// A wide picture fills the width; a tall one is capped by height; none grows.
+assert.deepEqual({ ...Model.fitImage({ width: 800, height: 400 }, 400, 300) }, { width: 400, height: 200 })
+assert.deepEqual({ ...Model.fitImage({ width: 900, height: 1600 }, 400, 320) }, { width: 180, height: 320 })
+assert.deepEqual({ ...Model.fitImage({ width: 100, height: 50 }, 400, 300) }, { width: 100, height: 50 })

@@ -157,16 +157,17 @@ Item {
     Box {
       visible: !!root.row.link
       lines: 3
+      image: root.row.link ? root.row.link.image : ""
       heading: root.row.link ? "↗ " + root.row.link.site : ""
       text: root.row.link ? root.row.link.title : ""
       onTapped: root.view.openOnSite(root.row.link.url)
     }
 
-    ActionButton {
-      visible: root.row.images > 0
-      icon: "▣"
-      label: Model.plural(root.row.images, "image") + " on the site"
-      onClicked: root.view.openOnSite(root.row.url)
+    CommitImages {
+      width: body.width
+      images: root.row.images
+      view: root.view
+      maxHeight: root.topLevel ? Style.space(340) : Style.space(220)
     }
 
     // --- Actions: each one is also a key on the selected commit ---------------
@@ -252,24 +253,37 @@ Item {
     width: 2
   }
 
-  // A quoted commit or a link card: a bordered box, as on the site.
+  // A quoted commit or a link card: a bordered box, as on the site, with the
+  // card's picture on the left when it has one.
   component Box: Rectangle {
     id: box
     property string heading
     property string text
+    property string image: ""
     property int lines: 3
     signal tapped()
+    readonly property real inset: Style.space(10)
     width: body.width
-    height: boxColumn.implicitHeight + Style.space(14)
+    height: Math.max(boxColumn.implicitHeight, thumb.visible ? thumb.height : 0) + inset * 1.4
     color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
     border.width: 1
     border.color: root.view.railColor
     radius: Style.space(6)
+    Picture {
+      id: thumb
+      visible: box.image !== ""
+      x: box.inset * 0.7
+      y: box.inset * 0.7
+      width: Style.space(96)
+      height: Style.space(54)
+      radius: Style.space(4)
+      source: box.image
+    }
     Column {
       id: boxColumn
-      x: Style.space(10)
-      y: Style.space(7)
-      width: box.width - Style.space(20)
+      x: thumb.visible ? thumb.x + thumb.width + box.inset : box.inset
+      y: box.inset * 0.7
+      width: box.width - x - box.inset
       spacing: Style.space(2)
       Mono { width: parent.width; text: box.heading; color: Color.muted; elide: Text.ElideRight }
       Mono {

@@ -124,6 +124,7 @@ Item {
     say("Copied link to " + row.hash, false)
   }
   function openProfile(username) { if (username) goTo("profile", username) }
+  function showImages(images, index) { viewer.show(images, index) }
   function say(text, failed) {
     status = text
     statusFailed = failed
@@ -169,6 +170,7 @@ Item {
   }
 
   function close() {
+    viewer.close()
     opened = false
     replyingTo = ""
     feed.closePanel()
@@ -209,6 +211,7 @@ Item {
   })
 
   function handleKey(event) {
+    if (viewer.handleKey(event)) return true
     if (event.key === Qt.Key_Escape) { dismiss(); return true }
     if (event.key === Qt.Key_Backspace) { back(); return true }
     var key = event.key === Qt.Key_Down ? "j" : event.key === Qt.Key_Up ? "k" : event.text
@@ -447,6 +450,14 @@ Item {
       }
 
       VLine { anchors.right: aside.left; visible: aside.visible }
+
+      // Pictures at full size, over everything else.
+      ImageViewer {
+        id: viewer
+        anchors.fill: parent
+        z: 10
+        view: root
+      }
 
       // --- Status line, like a terminal's last row ------------------------------------
 
