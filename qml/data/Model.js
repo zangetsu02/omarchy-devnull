@@ -524,3 +524,25 @@ function commandsFor(text) {
         if (COMMANDS[i].name.indexOf(typed) === 0) out.push(COMMANDS[i])
     return out
 }
+
+// A frame's top or bottom border, filling its width exactly. The title sits in
+// the top border, the way a box-drawn pane labels itself.
+function frameLine(kind, width, title) {
+    var w = Math.floor(width)
+    if (w < 2) return ""
+    var corners = kind === "bottom" ? ["└", "┘"] : ["┌", "┐"]
+    var inner = w - 2
+    var label = ""
+    if (kind !== "bottom" && title) {
+        // "─ title ─" needs two spaces and at least one dash on each side.
+        var room = inner - 4
+        if (room >= 1) label = " " + _cut(title, room) + " "
+    }
+    var dashes = inner - Array.from(label).length
+    var lead = label ? 1 : 0
+    return corners[0]
+        + new Array(lead + 1).join("─")
+        + label
+        + new Array(Math.max(0, dashes - lead) + 1).join("─")
+        + corners[1]
+}

@@ -196,7 +196,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             width: openLabel.implicitWidth + Style.space(24)
             height: openLabel.implicitHeight + Style.space(10)
-            radius: Style.space(6)
+            radius: 0
             color: openArea.containsMouse ? Qt.lighter(root.scheme.primary, 1.12) : root.scheme.primary
             Mono {
               id: openLabel
@@ -220,6 +220,14 @@ Panel {
 
   // --- Building blocks ------------------------------------------------------------
 
+  FontMetrics {
+    id: fm
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
+  }
+  readonly property real cell: fm.advanceWidth("0")
+  readonly property real lineH: fm.height * 1.3
+
   component SectionLabel: Mono {
     topPadding: Style.space(10)
     bottomPadding: Style.space(2)
@@ -233,7 +241,7 @@ Panel {
     id: area
     signal clicked()
     width: column.width
-    radius: Style.space(6)
+    radius: 0
     color: hover.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06) : "transparent"
     MouseArea {
       id: hover
@@ -300,62 +308,50 @@ Panel {
     required property var modelData
     readonly property var row: Model.rowFor(modelData)
     readonly property color lane: root.scheme.lanes[row.lane]
-    readonly property real railWidth: Style.space(22)
     height: content.implicitHeight + Style.space(16)
     onClicked: root.openFull("commit", glance.row.id)
 
-    // The rail runs through every row in each author's lane, like the log.
-    Rectangle {
-      x: glance.railWidth / 2 - 1
-      width: 2
-      height: parent.height
-      color: glance.lane
-      opacity: 0.7
-    }
-    Rectangle {
-      x: glance.railWidth / 2 - width / 2
-      y: Style.space(14)
-      width: Style.space(10)
-      height: width
-      radius: width / 2
-      color: glance.lane
-      border.width: 2
-      border.color: Color.background
+    // The same character rail as the full client, so the two read as one thing.
+    Column {
+      x: Style.space(6)
+      y: Style.space(8)
+      spacing: 0
+      Repeater {
+        model: Math.max(1, Math.ceil((glance.height - Style.space(8)) / root.lineH))
+        Mono {
+          required property int index
+          width: root.cell * 2
+          height: root.lineH
+          verticalAlignment: Text.AlignVCenter
+          color: index === 0 ? glance.lane : root.railColor
+          text: index === 0 ? Model.nodeGlyph(glance.modelData, false) : Model.rail("body", {})
+        }
+      }
     }
 
     Avatar {
       id: face
-      x: glance.railWidth + Style.space(4)
+      x: Style.space(6) + root.cell * 2
       y: Style.space(8)
-      size: Style.space(26)
+      size: root.cell * 2
       source: glance.row.avatar
       name: glance.row.name
     }
 
     Column {
       id: content
-      x: face.x + face.width + Style.space(10)
+      x: face.x + face.width + root.cell
       y: Style.space(8)
       width: glance.width - x - Style.space(8)
       spacing: Style.space(3)
 
-      Item {
+      Mono {
         width: content.width
-        height: who.implicitHeight
-        Mono {
-          id: who
-          width: parent.width - hash.implicitWidth - Style.space(8)
-          elide: Text.ElideRight
-          textFormat: Text.StyledText
-          text: "<b>" + root.esc(glance.row.name) + "</b>  "
-            + root.muted(glance.row.handle + " · " + Model.ageFor(glance.row.created, root.now))
-        }
-        Mono {
-          id: hash
-          anchors.right: parent.right
-          text: glance.row.hash
-          color: Color.muted
-        }
+        color: Color.muted
+        textFormat: Text.PlainText
+        text: root.cell > 0
+          ? Model.headerFor(glance.modelData, Math.floor(content.width / root.cell), root.now)
+          : ""
       }
       Mono {
         width: content.width

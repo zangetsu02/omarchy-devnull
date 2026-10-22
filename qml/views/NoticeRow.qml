@@ -37,38 +37,32 @@ Item {
     if (target) root.view.goTo(target.page, target.argument)
   }
 
-  Rectangle {
-    x: root.railWidth / 2 - 1
-    width: 2
-    height: root.height
-    color: root.view.railColor
+  FontMetrics {
+    id: fm
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
   }
+  readonly property real cell: fm.advanceWidth("0")
+  readonly property real lineH: fm.height * 1.3
 
-  Rectangle {
-    x: root.railWidth / 2 - width / 2
+  // The same rail the log draws, so the two pages read as one program. An
+  // unread notice is the filled node; a read one is hollow.
+  Column {
+    x: root.railWidth / 2 - root.cell
     y: root.pad
-    width: Style.space(30)
-    height: width
-    radius: width / 2
-    color: Color.background
-    // Unread on this visit: the node rings in the action blue, as on the site.
-    border.width: 2
-    border.color: root.notice.unread ? root.view.primary : root.view.railColor
-    Mono {
-      anchors.centerIn: parent
-      text: root.notice.icon
-      color: root.tint
-      font.pixelSize: Style.font.body
-      font.bold: true
+    spacing: 0
+    Repeater {
+      model: Math.max(1, Math.ceil((root.height - root.pad) / root.lineH))
+      Mono {
+        required property int index
+        width: root.cell * 2
+        height: root.lineH
+        verticalAlignment: Text.AlignVCenter
+        font.pixelSize: Style.font.body
+        color: index === 0 ? (root.notice.unread ? root.tint : root.view.railColor) : root.view.railColor
+        text: index === 0 ? (root.notice.unread ? "●" : "○") : Model.rail("body", {})
+      }
     }
-  }
-
-  Rectangle {
-    anchors.bottom: parent.bottom
-    x: root.railWidth
-    width: root.width - x
-    height: 1
-    color: root.view.railColor
   }
 
   Column {
@@ -136,7 +130,7 @@ Item {
       width: body.width
       height: theirs.implicitHeight + Style.space(8)
       x: -Style.space(6)
-      radius: Style.space(6)
+      radius: 0
       color: theirsArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.07) : "transparent"
       Mono {
         id: theirs
@@ -159,7 +153,7 @@ Item {
       color: ownArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05) : "transparent"
       border.width: 1
       border.color: ownArea.containsMouse ? Color.muted : root.view.railColor
-      radius: Style.space(6)
+      radius: 0
       Mono {
         id: own
         x: Style.space(10)

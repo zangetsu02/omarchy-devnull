@@ -95,7 +95,7 @@ Item {
       color: "transparent"
       border.width: 1
       border.color: root.view.railColor
-      radius: Style.space(6)
+      radius: 0
       Mono {
         id: quoted
         x: Style.space(10)
@@ -123,7 +123,7 @@ Item {
       Rectangle {
         width: label.implicitWidth + Style.space(24)
         height: label.implicitHeight + Style.space(10)
-        radius: Style.space(6)
+        radius: 0
         color: root.view.primary
         opacity: root.ready ? 1 : 0.45
         Mono {

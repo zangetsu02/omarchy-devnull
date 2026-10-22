@@ -97,4 +97,30 @@ const known = new Set(["log", "notifications", "starred", "profile", "refresh",
 for (const command of Model.commandsFor(""))
   assert.ok(known.has(command.name), `${command.name} is not wired to anything`)
 
+// --- Frames -----------------------------------------------------------------
+
+// A titled top border fills its width exactly, whatever the title.
+const top = Model.frameLine("top", 40, "commit d453634")
+assert.equal([...top].length, 40)
+assert.ok(top.startsWith("┌─ commit d453634 ─"))
+assert.ok(top.endsWith("┐"))
+
+// Untitled, and the bottom.
+assert.equal(Model.frameLine("top", 10, ""), "┌────────┐")
+assert.equal(Model.frameLine("bottom", 10, ""), "└────────┘")
+assert.equal([...Model.frameLine("bottom", 37, "")].length, 37)
+
+// A title longer than the frame is cut, never wrapped: the border is one line.
+const squeezed = Model.frameLine("top", 16, "a".repeat(40))
+assert.equal([...squeezed].length, 16)
+assert.ok(squeezed.endsWith("┐"))
+assert.ok(squeezed.includes("…"))
+
+// Too narrow to hold a title at all still gives a valid border.
+assert.equal([...Model.frameLine("top", 4, "wide title")].length, 4)
+assert.equal([...Model.frameLine("top", 2, "x")].length, 2)
+// A width below two cannot be drawn; it gives nothing rather than a stray corner.
+assert.equal(Model.frameLine("top", 1, ""), "")
+assert.equal(Model.frameLine("top", 0, ""), "")
+
 console.log("Model.js: tui checks passed")

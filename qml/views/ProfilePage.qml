@@ -199,7 +199,7 @@ Item {
     readonly property bool tinted: tint.a > 0
     width: chipText.implicitWidth + Style.space(10)
     height: chipText.implicitHeight + Style.space(4)
-    radius: Style.space(4)
+    radius: 0
     color: tinted ? Qt.rgba(tint.r, tint.g, tint.b, 0.14) : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
     border.width: tinted ? 1 : 0
     border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.5)
