@@ -129,6 +129,14 @@ Item {
   }
   function openProfile(username) { if (username) goTo("profile", username) }
   function openCommit(id) { if (id) goTo("commit", id) }
+
+  // A click moves the cursor, as in a terminal. The row cannot reach the list
+  // it sits in, so it asks here and the visible list takes it.
+  function selectCommit(id) {
+    if (!id) return
+    if (root.page === "starred") starredList.selectedId = id
+    else logList.selectedId = id
+  }
   function showImages(images, index) { viewer.show(images, index) }
   function say(text, failed) {
     status = text
