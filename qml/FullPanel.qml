@@ -2,7 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import qs.Commons
-import "Model.js" as Model
+import "data"
+import "views"
+import "ui"
+import "data/Model.js" as Model
 
 // The full view behind Open: dev-null in the shell, drawn like a terminal.
 // Sections on the left (Log, Notifications, Starred, Profile), the page in the

@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import qs.Commons
-import "Model.js" as Model
+import "../ui"
+import "../data/Model.js" as Model
 
 // One commit as `git log --graph` would print it: a rail in the author's lane,
 // the avatar, who and when, the body, and a row of actions. Replies use the

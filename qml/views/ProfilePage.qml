@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import qs.Commons
-import "Model.js" as Model
+import "../data"
+import "../ui"
+import "../data/Model.js" as Model
 
 // Someone's profile, yours included: the header (avatar in its lane ring, bio,
 // counts, Follow), then their commits, followers or following. The header is

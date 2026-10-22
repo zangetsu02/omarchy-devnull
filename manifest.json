@@ -11,8 +11,8 @@
     "panel"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml",
-    "panel": "FullPanel.qml"
+    "barWidget": "qml/Panel.qml",
+    "panel": "qml/FullPanel.qml"
   },
   "barWidget": {
     "displayName": "dev-null",

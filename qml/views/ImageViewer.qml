@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../ui"
 
 // A commit's pictures at full size, over the whole window. ← → (or h l) step
 // through them, enter opens the one in front in the browser, esc or a click

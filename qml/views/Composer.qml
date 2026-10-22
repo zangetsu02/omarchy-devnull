@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import qs.Commons
-import "Model.js" as Model
+import "../ui"
+import "../data/Model.js" as Model
 
 // The staged commit at the top of the log: a hollow node in your lane that
 // fills once there is something to commit, your avatar, the field, and the

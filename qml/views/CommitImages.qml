@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
-import "Model.js" as Model
+import "../ui"
+import "../data/Model.js" as Model
 
 // The pictures under a commit. One keeps its proportions, capped in height;
 // more are cropped into a two-column grid. A click opens them in the viewer.
