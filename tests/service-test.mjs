@@ -10,7 +10,7 @@ import vm from "node:vm"
 // before comparison: deepEqual otherwise trips on the prototype, not the values.
 
 const here = dirname(fileURLToPath(import.meta.url))
-const source = readFileSync(join(here, "..", "Model.js"), "utf8").replace(".pragma library", "")
+const source = readFileSync(join(here, "..", "qml", "data", "Model.js"), "utf8").replace(".pragma library", "")
 const Model = {}
 vm.createContext(Model)
 vm.runInContext(source, Model)

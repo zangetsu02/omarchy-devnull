@@ -33,7 +33,7 @@ QtObject {
   // True once older pages were loaded: the timer then leaves the feed alone
   // rather than replacing everything scrolled to with page one.
   property bool expanded: false
-  property string _scriptPath: Qt.resolvedUrl("scripts/devnull").toString().replace("file://", "")
+  property string _scriptPath: Qt.resolvedUrl("../../scripts/devnull").toString().replace("file://", "")
 
   property Timer _timer: Timer {
     interval: Model.pollDelay(root.panelOpen, root.settings)

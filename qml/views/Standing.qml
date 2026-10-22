@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
-import "Model.js" as Model
+import "../ui"
+import "../data/Model.js" as Model
 
 // Where a profile stands, as the site shows it under the header: the commit
 // activity graph in the owner's lane, the streaks, the level with its XP bar,

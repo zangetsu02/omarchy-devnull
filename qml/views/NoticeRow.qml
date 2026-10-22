@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
-import "Model.js" as Model
+import "../ui"
+import "../data/Model.js" as Model
 
 // One notification as a row on a grey rail: a hollow node holding the type's
 // icon, who did it (up to three avatars), what they did, and the words —

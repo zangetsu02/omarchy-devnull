@@ -1,7 +1,9 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
-import "Model.js" as Model
+import "data"
+import "ui"
+import "data/Model.js" as Model
 
 // The bar icon and its popup: a glance at who reached you and the last few
 // commits, drawn like the full client. Every row opens the full client on

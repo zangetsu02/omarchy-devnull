@@ -1,6 +1,8 @@
 import QtQuick
 import qs.Commons
-import "Model.js" as Model
+import "../data"
+import "../ui"
+import "../data/Model.js" as Model
 
 // One commit on its own: the commits it replies to above it on the same rail,
 // then the commit, selected, with its replies already open — the site's

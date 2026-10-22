@@ -170,20 +170,23 @@ The site is weeks old and its API is undocumented. Shapes can change.
 
 ## How it is put together
 
-| File | Role |
-|---|---|
-| `scripts/devnull` | The only thing that talks to dev-null.sh: signs each request, prints JSON. |
-| `scripts/setup-devnull`, `scripts/devnull-callback` | Pairing, once. |
-| `Model.js` | Pure functions: what to call when, how a commit becomes a row, the palette. |
-| `Service.qml` | Runs the bridge and holds the log, threads and notifications. |
-| `Pager.qml` | Any other paged list: starred, a profile's commits, followers. |
-| `Panel.qml` | The bar icon and its popup. |
-| `FullPanel.qml` | The full client: layout, keys, navigation, and the actions rows call. |
-| `LogRow.qml`, `NoticeRow.qml`, `CommitPage.qml`, `ProfilePage.qml`, `Composer.qml`, `CommitList.qml` | Its pieces. |
-| `CommitImages.qml`, `ImageViewer.qml` | A commit's pictures, and the full-size viewer. |
-| `Picture.qml`, `Avatar.qml`, `ActionButton.qml`, `LinkText.qml`, `Mono.qml` | Shared building blocks. |
+```
+manifest.json  README.md  LICENSE  preview.png
+qml/
+  Panel.qml        the bar icon and its popup (entry point)
+  FullPanel.qml    the full client: layout, keys, navigation (entry point)
+  data/            Service.qml, Pager.qml and Model.js: state and pure logic
+  views/           the client's pages and rows, the composer, the pictures
+  ui/              shared building blocks: Mono, LinkText, ActionButton, Avatar, Picture
+scripts/
+  devnull          the only thing that talks to dev-null.sh: signs each request, prints JSON
+  setup-devnull    pairing, once (with devnull-callback)
+tests/             tests/run, all against a mock of dev-null.sh
+```
 
-Rows and pages only talk to `FullPanel`; it is the one that knows the service.
+`Model.js` holds every decision that can be made without QML (what to call
+when, how a commit becomes a row, the palette), so node can test it. Rows and
+pages only talk to `FullPanel`; it is the one that knows the service.
 
 ## Tests
 
