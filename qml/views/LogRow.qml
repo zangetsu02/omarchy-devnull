@@ -38,7 +38,10 @@ Item {
     font.pixelSize: Style.font.body
   }
   readonly property real cell: fm.advanceWidth("0")
-  readonly property real lineH: fm.height * 1.3
+  // The pitch the text actually uses. TextEdit has no lineHeight to stretch it,
+  // so a rail stepping any wider than this draws `│` dashed and drifts away
+  // from the line it belongs to.
+  readonly property real lineH: fm.height
   // rail(2) + avatar(2) + a space = where every line of text begins
   readonly property real textCol: cell * (topLevel ? 5 : 7)
 
@@ -129,9 +132,6 @@ Item {
       font.pixelSize: Style.font.body
       textFormat: TextEdit.PlainText
       wrapMode: TextEdit.WrapAnywhere
-      // The rail next to this is drawn one glyph per line at the same pitch.
-      // Drop this and `│` draws dashed, with a gap every line.
-      lineHeight: 1.3
     }
 
     Box {

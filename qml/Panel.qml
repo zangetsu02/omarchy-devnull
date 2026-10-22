@@ -250,7 +250,10 @@ Panel {
     font.pixelSize: Style.font.body
   }
   readonly property real cell: fm.advanceWidth("0")
-  readonly property real lineH: fm.height * 1.3
+  // The pitch the text actually uses. TextEdit has no lineHeight to stretch it,
+  // so a rail stepping any wider than this draws `│` dashed and drifts away
+  // from the line it belongs to.
+  readonly property real lineH: fm.height
 
   component SectionLabel: Mono {
     topPadding: Style.space(10)
