@@ -202,10 +202,15 @@ def public_feed():
     derived here the way CommitResource derives them, and one shape reaches the
     panel whichever door the commits came through.
     """
-    request = urllib.request.Request(BASE_URL + "/", headers={"Accept": "text/html"})
+    request = urllib.request.Request(
+        BASE_URL + "/", headers={"Accept": "text/html", "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             page_html = response.read().decode(errors="replace")
+    except urllib.error.HTTPError as error:
+        # A refusal from the site is not a dead network, and must not read as one.
+        message = f"dev-null answered {error.code} for its home page."
+        raise BridgeError(message, classify(error.code, None, message)) from error
     except urllib.error.URLError as error:
         raise BridgeError(str(getattr(error, "reason", error)), "network") from error
 
