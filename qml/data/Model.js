@@ -444,19 +444,31 @@ function activitySummary(activity) {
 // rather than rectangles. Every glyph here is one column wide: a two-cell one
 // would shear every line beneath it.
 
+// Every glyph the grid draws, in one place, so tests/glyph-test can ask
+// fontconfig who serves each one. A glyph the monospace font lacks falls back
+// to another face at another width and shears every line under it — which is
+// why the counters are Nerd Font private-use points and not ★ ☆ ⤷.
+var GLYPHS = {
+    node: "○", nodeHere: "●", nodeGone: "◌",
+    bar: "│", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
+    topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
+    star: "\u{f04ce}", unstarred: "\u{f04d2}", replies: "\u{f045a}",
+    ellipsis: "…"
+}
+
 // One marker, not two. Filled is the cursor, the way LazyVim keeps `cursorline`
 // as the only mark and lets the mouse move it rather than add a state.
 function nodeGlyph(commit, selected) {
-    if (commit && commit.deleted_at) return "◌"   // a tombstone keeps its place
-    return selected ? "●" : "○"
+    if (commit && commit.deleted_at) return GLYPHS.nodeGone   // a tombstone keeps its place
+    return selected ? GLYPHS.nodeHere : GLYPHS.node
 }
 
 function rail(kind, opts) {
     var o = opts || {}
     switch (kind) {
-    case "body": return "│"
-    case "reply": return o.last ? "╰─⤷" : "├─⤷"
-    case "gap": return o.below ? "│" : " "
+    case "body": return GLYPHS.bar
+    case "reply": return (o.last ? GLYPHS.lastBranch : GLYPHS.branch) + GLYPHS.dash + GLYPHS.arm
+    case "gap": return o.below ? GLYPHS.bar : " "
     default: return " "
     }
 }
@@ -465,18 +477,22 @@ function _cut(text, room) {
     var chars = Array.from(String(text || ""))
     if (chars.length <= room) return chars.join("")
     if (room <= 1) return chars.slice(0, Math.max(0, room)).join("")
-    return chars.slice(0, room - 1).join("") + "…"
+    return chars.slice(0, room - 1).join("") + GLYPHS.ellipsis
 }
 
 // "d453634  @zangetsu02        2m   ★ 4   ⤷ 1", filling the column exactly.
 // The counts are pushed right and never dropped: a crowded handle is cut
 // instead, because the line has no second row to wrap onto.
 function headerFor(commit, width, nowMs) {
+    if (!isFinite(width) || width < 1) return ""
     var c = commit || {}
     var author = c.author || {}
     var right = [ageFor(c.created_at, nowMs === undefined ? Date.now() : nowMs)]
-    if (c.stars_count > 0) right.push((c.starred ? "★" : "☆") + " " + c.stars_count)
-    if (c.replies_count > 0) right.push("⤷ " + c.replies_count)
+    // Inside the padded line, not appended after it: a word added afterwards
+    // makes exactly the held rows wider than every other row.
+    if (c.status === "pending") right.push("held")
+    if (c.stars_count > 0) right.push((c.starred ? GLYPHS.star : GLYPHS.unstarred) + " " + c.stars_count)
+    if (c.replies_count > 0) right.push(GLYPHS.replies + " " + c.replies_count)
     var tail = right.filter(function (part) { return !!part }).join("   ")
 
     var left = (c.short_hash || "") + "  @" + (author.username || "?")
@@ -528,9 +544,11 @@ function commandsFor(text) {
 // A frame's top or bottom border, filling its width exactly. The title sits in
 // the top border, the way a box-drawn pane labels itself.
 function frameLine(kind, width, title) {
+    if (!isFinite(width)) return ""
     var w = Math.floor(width)
     if (w < 2) return ""
-    var corners = kind === "bottom" ? ["└", "┘"] : ["┌", "┐"]
+    var corners = kind === "bottom" ? [GLYPHS.bottomLeft, GLYPHS.bottomRight]
+                                    : [GLYPHS.topLeft, GLYPHS.topRight]
     var inner = w - 2
     var label = ""
     if (kind !== "bottom" && title) {
@@ -541,8 +559,8 @@ function frameLine(kind, width, title) {
     var dashes = inner - Array.from(label).length
     var lead = label ? 1 : 0
     return corners[0]
-        + new Array(lead + 1).join("─")
+        + new Array(lead + 1).join(GLYPHS.dash)
         + label
-        + new Array(Math.max(0, dashes - lead) + 1).join("─")
+        + new Array(Math.max(0, dashes - lead) + 1).join(GLYPHS.dash)
         + corners[1]
 }

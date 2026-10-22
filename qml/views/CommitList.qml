@@ -43,8 +43,12 @@ ListView {
     commit: modelData
     view: root.view
     selected: index === root.selectedIndex
-    laneAbove: index > 0 ? root.view.laneColor(Model.laneOf(root.commits[index - 1])) : root.view.railColor
-    TapHandler { onTapped: root.selectedId = modelData.id }
+    // Click moves the cursor, as in a terminal; double click is what `enter` is.
+    // A click on the body selects text instead: TextEdit takes the grab there.
+    TapHandler {
+      onSingleTapped: root.selectedId = modelData.id
+      onDoubleTapped: root.view.openCommit(modelData.id)
+    }
   }
 
   footer: Item {

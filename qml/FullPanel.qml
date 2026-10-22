@@ -133,13 +133,6 @@ Item {
   function openProfile(username) { if (username) goTo("profile", username) }
   function openCommit(id) { if (id) goTo("commit", id) }
 
-  // A click moves the cursor, as in a terminal. The row cannot reach the list
-  // it sits in, so it asks here and the visible list takes it.
-  function selectCommit(id) {
-    if (!id) return
-    if (root.page === "starred") starredList.selectedId = id
-    else logList.selectedId = id
-  }
   function showImages(images, index) { viewer.show(images, index) }
   function say(text, failed) {
     status = text
@@ -175,6 +168,9 @@ Item {
   // --- Host --------------------------------------------------------------------
 
   function open(payloadJson) {
+    // A window that was closed mid-command must not come back still modal:
+    // the prompt's onVisibleChanged would not re-fire, so nothing would focus it.
+    root.commandMode = false
     var payload = ({})
     try { payload = JSON.parse(String(payloadJson || "{}")) || ({}) } catch (e) {}
     if (shell && shell.bar && typeof shell.bar.hideBarWidget === "function")
@@ -233,12 +229,28 @@ Item {
     "p": function () { root.goTo("profile", root.myUsername) }
   })
 
+  function leaveCommandMode() {
+    root.commandMode = false
+    scope.forceActiveFocus()
+  }
+
+  // The three logs the service knows. Anything else would clear the feed and
+  // call the CLI with an invented argument.
+  readonly property var logNames: ["following", "latest", "trending"]
+
   function runCommand(text) {
     var parsed = Model.parseCommand(text)
     var commit = activeList ? activeList.selectedCommit : null
     switch (parsed.name) {
     case "": break
-    case "log": root.goTo("log", ""); if (parsed.arg) feed.switchLog(parsed.arg); break
+    case "log":
+      if (parsed.arg && root.logNames.indexOf(parsed.arg) < 0) {
+        root.say("E474: no such log: " + parsed.arg + " (" + root.logNames.join(", ") + ")", true)
+        return
+      }
+      root.goTo("log", "")
+      if (parsed.arg) feed.switchLog(parsed.arg)
+      break
     case "notifications": root.goTo("notifications", ""); break
     case "starred": root.goTo("starred", ""); break
     case "profile": root.openProfile(parsed.arg.replace(/^@/, "") || root.myUsername); break
@@ -254,7 +266,12 @@ Item {
 
   function handleKey(event) {
     if (viewer.handleKey(event)) return true
-    if (root.commandMode) return false
+    if (root.commandMode) {
+      // The prompt may have lost focus to a click on a body or a field. Escape
+      // has to get out of the mode from here too, or the keyboard is bricked.
+      if (event.key === Qt.Key_Escape) { root.leaveCommandMode(); return true }
+      return false
+    }
     if (event.text === ":") { root.commandMode = true; return true }
     if (event.key === Qt.Key_Escape) { dismiss(); return true }
     if (event.key === Qt.Key_Backspace) { back(); return true }
@@ -593,8 +610,8 @@ Item {
               font.family: Style.font.family
               font.pixelSize: Style.font.body
               onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
-              onAccepted: { root.commandMode = false; root.runCommand(text); scope.forceActiveFocus() }
-              Keys.onEscapePressed: { root.commandMode = false; scope.forceActiveFocus() }
+              onAccepted: { var line = text; root.leaveCommandMode(); root.runCommand(line) }
+              Keys.onEscapePressed: root.leaveCommandMode()
               // Tab takes the first thing still on offer, as a shell would.
               Keys.onTabPressed: {
                 var offers = Model.commandsFor(text)

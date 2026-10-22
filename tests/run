@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 node model-test.mjs
 node service-test.mjs
 node tui-test.mjs
+./glyph-test
 ./signing-test
 ./pairing-test
 ./read-test

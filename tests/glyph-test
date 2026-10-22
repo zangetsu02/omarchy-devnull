@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Every glyph the TUI draws must come from the SAME font as "0", or the grid is
+# not a grid. Counting code points proves nothing: `⤷` is one code point and
+# one and a half cells, because it falls back to a proportional face.
+#
+# Model.js declares them all in GLYPHS; this asks fontconfig who serves each.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+model=../qml/data/Model.js
+base=$(fc-match -f '%{family}' monospace)
+
+glyphs=$(python3 - "$model" <<'PY'
+import re, sys
+source = open(sys.argv[1], encoding="utf-8").read()
+block = re.search(r"var GLYPHS = \{(.*?)\n\}", source, re.S)
+if not block:
+    sys.exit("Model.js has no GLYPHS block: the glyphs are not declared in one place")
+seen = []
+for value in re.findall(r'"((?:[^"\\]|\\u\{[0-9a-fA-F]+\}|\\.)*)"', block.group(1)):
+    text = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), value)
+    for ch in text:
+        if ch not in seen and ch != " ":
+            seen.append(ch)
+print("".join(seen))
+PY
+)
+
+test -n "$glyphs" || { echo "GLYPHS is empty"; exit 1; }
+
+bad=0
+while IFS= read -r -n1 glyph; do
+  [ -n "$glyph" ] || continue
+  code=$(printf '%x' "'$glyph")
+  family=$(fc-match -f '%{family}' "monospace:charset=$code")
+  if [ "$family" != "$base" ]; then
+    printf 'NOT IN THE GRID FONT: %s (U+%s) is served by %s, not %s\n' "$glyph" "$code" "$family" "$base"
+    bad=$((bad + 1))
+  fi
+done <<< "$glyphs"
+
+if [ "$bad" -gt 0 ]; then
+  echo "$bad glyph(s) fall back to another font: every line under them shears."
+  exit 1
+fi
+
+echo "glyphs: all $(printf %s "$glyphs" | wc -m) served by $base"

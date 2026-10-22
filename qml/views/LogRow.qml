@@ -22,8 +22,6 @@ Item {
   // Set by the row above when this is the last reply in its thread: it decides
   // whether the rail closes with ╰ or carries on with ├.
   property bool lastReply: false
-  // The lane of the commit drawn above, for the rail segment over the node.
-  property color laneAbove: view.railColor
 
   readonly property var row: Model.rowFor(commit)
   readonly property color lane: view.laneColor(row.lane)
@@ -46,12 +44,6 @@ Item {
 
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
-  // Click moves the cursor here, as it does in a terminal; it never opens.
-  // Double click is what `enter` is on the keyboard.
-  TapHandler {
-    onSingleTapped: root.view.selectCommit(root.row.id)
-    onDoubleTapped: root.view.openCommit(root.row.id)
-  }
 
   // Selected: a wash and a bar in the action blue, the way the site marks focus.
   Rectangle {
@@ -115,10 +107,10 @@ Item {
       font.pixelSize: Style.font.body
       color: root.selected ? Color.foreground : Color.muted
       textFormat: Text.PlainText
+      elide: Text.ElideRight
       text: root.row.deleted
         ? "[deleted]"
-        : Model.headerFor(root.commit, Math.floor(body.width / root.cell), root.view.now)
-         + (root.row.pending ? "  held" : "")
+        : (root.cell > 0 ? Model.headerFor(root.commit, body.width / root.cell, root.view.now) : "")
     }
 
     // Selectable, the way text in a terminal is. A drag here selects rather
@@ -137,6 +129,9 @@ Item {
       font.pixelSize: Style.font.body
       textFormat: TextEdit.PlainText
       wrapMode: TextEdit.WrapAnywhere
+      // The rail next to this is drawn one glyph per line at the same pitch.
+      // Drop this and `│` draws dashed, with a gap every line.
+      lineHeight: 1.3
     }
 
     Box {

@@ -60,7 +60,8 @@ Item {
         verticalAlignment: Text.AlignVCenter
         font.pixelSize: Style.font.body
         color: index === 0 ? (root.notice.unread ? root.tint : root.view.railColor) : root.view.railColor
-        text: index === 0 ? (root.notice.unread ? "●" : "○") : Model.rail("body", {})
+        text: index === 0 ? (root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node)
+                          : Model.rail("body", {})
       }
     }
   }
@@ -121,6 +122,9 @@ Item {
         color: Color.muted
         font.pixelSize: Style.font.body
       }
+      // The icon used to be the node; the node is the unread mark now, so the
+      // kind of notification says itself here instead.
+      Mono { text: root.notice.icon; color: root.tint; font.pixelSize: Style.font.body }
       Mono { text: root.notice.verb; font.pixelSize: Style.font.body }
     }
 
