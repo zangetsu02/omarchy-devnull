@@ -229,6 +229,14 @@ Item {
     "p": function () { root.goTo("profile", root.myUsername) }
   })
 
+  // Connecting means running the setup script, which needs a browser and a
+  // terminal. The panel opens one rather than telling anyone to go find it.
+  function connect() {
+    Quickshell.execDetached(["omarchy-launch-terminal",
+                             Qt.resolvedUrl("../scripts/setup-devnull").toString().replace("file://", "")])
+    root.say("Finish connecting in the terminal that just opened.", false)
+  }
+
   function leaveCommandMode() {
     root.commandMode = false
     scope.forceActiveFocus()
@@ -259,6 +267,7 @@ Item {
     case "reply": if (commit) root.toggleReply(commit.id); break
     case "open": if (commit) root.openOnSite(commit.html_url); break
     case "copy": if (commit) root.copyLink(Model.rowFor(commit)); break
+    case "connect": root.connect(); break
     case "quit": root.dismiss(); break
     default: root.say("E492: not an editor command: " + parsed.name, true); return
     }
@@ -582,6 +591,21 @@ Item {
             text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
             color: root.statusFailed ? root.destructive : Color.foreground
           }
+          // Signed out: one control, no explanation. The feed below is the
+          // argument; a line about what you are missing would only nag.
+          Mono {
+            id: connectButton
+            visible: feed.signedOut && !root.commandMode
+            anchors.right: where.left
+            anchors.rightMargin: Style.space(18)
+            anchors.verticalCenter: parent.verticalCenter
+            text: "[ connect ]"
+            color: connectHover.hovered ? Color.foreground : root.primary
+            font.bold: true
+            HoverHandler { id: connectHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: root.connect() }
+          }
+
           Mono {
             id: where
             anchors.right: parent.right

@@ -548,6 +548,7 @@ var COMMANDS = [
     { name: "reply", help: "reply to it" },
     { name: "open", help: "open it on dev-null.sh" },
     { name: "copy", help: "copy its link" },
+    { name: "connect", help: "connect this machine to dev-null" },
     { name: "quit", help: "close the client" }
 ]
 

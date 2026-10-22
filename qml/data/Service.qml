@@ -26,6 +26,9 @@ QtObject {
   property string updatedAt: ""
   property bool loading: true
   property bool broken: false
+  // Never connected. Not a failure: the panel reads the public feed and offers
+  // the connection, rather than showing a red line about a key nobody made yet.
+  property bool signedOut: false
   property string lastError: ""
   property bool panelOpen: false
 
@@ -54,9 +57,15 @@ QtObject {
       if (answer && answer.error) {
         root._authFailures = Model.nextFailureCount(root._authFailures, answer)
         root.broken = Model.isBroken(root._authFailures)
+        var wasSignedOut = root.signedOut
+        root.signedOut = answer.kind === "unpaired"
         root.lastError = Model.errorLine(answer)
+        // Found out just now: fetch the public feed at once rather than leaving
+        // the panel blank until the next tick.
+        if (root.signedOut && !wasSignedOut) root.dispatch("publicFeed")
       } else {
         root._authFailures = Model.nextFailureCount(root._authFailures, null)
+        root.signedOut = false
         root.lastError = ""
       }
       if (done) done(answer)
@@ -65,7 +74,7 @@ QtObject {
   }
 
   function tick() {
-    var calls = Model.tickCalls(root.panelOpen, root.broken, root.expanded)
+    var calls = Model.tickCalls(root.panelOpen, root.broken, root.expanded, root.signedOut)
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
   }
 
@@ -92,6 +101,15 @@ QtObject {
         }
         root.loading = false
       })
+    } else if (name === "publicFeed") {
+      root.run(["feed", "--public"], function (answer) {
+        if (!answer.error) {
+          root.commits = answer.commits || []
+          root.nextCursor = ""          // paging the public page is not offered
+          root.expanded = false
+        }
+        root.loading = false
+      })
     } else if (name === "notifications") {
       root.run(["notifications"], function (answer) {
         if (!answer.error) {
@@ -109,7 +127,7 @@ QtObject {
     // Broken, this is a single probe: a successful answer clears the failure
     // count, so re-pairing is noticed without restarting the shell.
     var wasBroken = root.broken
-    var calls = Model.openCalls(root.broken)
+    var calls = Model.openCalls(root.broken, root.signedOut)
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     if (wasBroken) root.recoveryCheck.restart()
   }
@@ -118,7 +136,7 @@ QtObject {
   property Timer recoveryCheck: Timer {
     interval: 1500
     onTriggered: if (!root.broken && root.panelOpen) {
-      var calls = Model.openCalls(false)
+      var calls = Model.openCalls(false, root.signedOut)
       for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     }
   }

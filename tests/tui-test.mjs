@@ -113,7 +113,7 @@ assert.deepEqual(Array.from(Model.commandsFor(":log latest").map(c => c.name)), 
 
 // Every command maps to something the panel can actually do.
 const known = new Set(["log", "notifications", "starred", "profile", "refresh",
-                       "star", "open", "copy", "reply", "quit"])
+                       "star", "open", "copy", "reply", "connect", "quit"])
 for (const command of Model.commandsFor(""))
   assert.ok(known.has(command.name), `${command.name} is not wired to anything`)
 

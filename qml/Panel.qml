@@ -45,6 +45,13 @@ Panel {
 
   // Same dance as the Spotify full player: hide first, summon on the next
   // turn, so Wayland unmaps the old surface before the shell maps it again.
+  // The setup needs a browser and a terminal; the popup opens one rather than
+  // telling anyone where to go looking.
+  function connect() {
+    Quickshell.execDetached(["omarchy-launch-terminal",
+                             Qt.resolvedUrl("../scripts/setup-devnull").toString().replace("file://", "")])
+  }
+
   function openFull(page, argument) {
     root.close()
     if (!bar || !bar.shell) return
@@ -139,8 +146,25 @@ Panel {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(8)
-            Mono { anchors.verticalCenter: parent.verticalCenter; text: feed.username !== "" ? "@" + feed.username : ""; color: Color.muted }
+            // Signed out: one control where the handle would be, and nothing
+            // else. The feed underneath is the only argument it needs.
+            Mono {
+              visible: feed.signedOut
+              anchors.verticalCenter: parent.verticalCenter
+              text: "[ connect ]"
+              color: connectHover.hovered ? Color.foreground : root.scheme.lanes[0]
+              font.bold: true
+              HoverHandler { id: connectHover; cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: root.connect() }
+            }
+            Mono {
+              visible: !feed.signedOut
+              anchors.verticalCenter: parent.verticalCenter
+              text: feed.username !== "" ? "@" + feed.username : ""
+              color: Color.muted
+            }
             Avatar {
+              visible: !feed.signedOut
               size: Style.space(22)
               ring: root.scheme.lanes[Model.laneOf({ author: feed.me })]
               source: feed.me.avatar_url || ""
