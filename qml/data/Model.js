@@ -437,3 +437,52 @@ function activitySummary(activity) {
     if (total === 0) return "No commits yet"
     return plural(total, "commit") + " in " + (WINDOWS[(activity && activity.scale) || "day"] || WINDOWS.day)
 }
+
+// --- The character grid ------------------------------------------------------
+//
+// The log is drawn as a terminal would draw it, so the rail is characters
+// rather than rectangles. Every glyph here is one column wide: a two-cell one
+// would shear every line beneath it.
+
+// One marker, not two. Filled is the cursor, the way LazyVim keeps `cursorline`
+// as the only mark and lets the mouse move it rather than add a state.
+function nodeGlyph(commit, selected) {
+    if (commit && commit.deleted_at) return "◌"   // a tombstone keeps its place
+    return selected ? "●" : "○"
+}
+
+function rail(kind, opts) {
+    var o = opts || {}
+    switch (kind) {
+    case "body": return "│"
+    case "reply": return o.last ? "╰─⤷" : "├─⤷"
+    case "gap": return o.below ? "│" : " "
+    default: return " "
+    }
+}
+
+function _cut(text, room) {
+    var chars = Array.from(String(text || ""))
+    if (chars.length <= room) return chars.join("")
+    if (room <= 1) return chars.slice(0, Math.max(0, room)).join("")
+    return chars.slice(0, room - 1).join("") + "…"
+}
+
+// "d453634  @zangetsu02        2m   ★ 4   ⤷ 1", filling the column exactly.
+// The counts are pushed right and never dropped: a crowded handle is cut
+// instead, because the line has no second row to wrap onto.
+function headerFor(commit, width, nowMs) {
+    var c = commit || {}
+    var author = c.author || {}
+    var right = [ageFor(c.created_at, nowMs === undefined ? Date.now() : nowMs)]
+    if (c.stars_count > 0) right.push((c.starred ? "★" : "☆") + " " + c.stars_count)
+    if (c.replies_count > 0) right.push("⤷ " + c.replies_count)
+    var tail = right.filter(function (part) { return !!part }).join("   ")
+
+    var left = (c.short_hash || "") + "  @" + (author.username || "?")
+    var room = width - Array.from(tail).length - 2
+    left = _cut(left, Math.max(0, room))
+
+    var gap = width - Array.from(left).length - Array.from(tail).length
+    return left + new Array(Math.max(1, gap) + 1).join(" ") + tail
+}
