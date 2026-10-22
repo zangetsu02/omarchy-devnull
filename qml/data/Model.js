@@ -486,3 +486,41 @@ function headerFor(commit, width, nowMs) {
     var gap = width - Array.from(left).length - Array.from(tail).length
     return left + new Array(Math.max(1, gap) + 1).join(" ") + tail
 }
+
+// --- The command line --------------------------------------------------------
+//
+// `:` is for what a single key does not deserve. Every command here maps to
+// something the panel already does with a key; nothing new lives behind one.
+
+var COMMANDS = [
+    { name: "log", help: "following · latest · trending" },
+    { name: "notifications", help: "what happened to you" },
+    { name: "profile", help: "yours, or @someone" },
+    { name: "refresh", help: "reload what is on screen" },
+    // `star` before `starred`: a prefix must be offered before what extends it.
+    { name: "star", help: "star the commit under the cursor" },
+    { name: "starred", help: "commits you starred" },
+    { name: "reply", help: "reply to it" },
+    { name: "open", help: "open it on dev-null.sh" },
+    { name: "copy", help: "copy its link" },
+    { name: "quit", help: "close the client" }
+]
+
+function parseCommand(text) {
+    var line = String(text || "").replace(/^:/, "").trim()
+    if (line === "") return { name: "", arg: "" }
+    var cut = line.indexOf(" ")
+    if (cut < 0) return { name: line, arg: "" }
+    return { name: line.slice(0, cut), arg: line.slice(cut + 1).trim() }
+}
+
+// What to offer under the prompt. Once an argument is being typed the verb is
+// settled, so the list gets out of the way.
+function commandsFor(text) {
+    var typed = String(text || "").replace(/^:/, "")
+    if (typed.indexOf(" ") >= 0) return []
+    var out = []
+    for (var i = 0; i < COMMANDS.length; i++)
+        if (COMMANDS[i].name.indexOf(typed) === 0) out.push(COMMANDS[i])
+    return out
+}

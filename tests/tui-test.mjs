@@ -68,4 +68,33 @@ assert.equal([...long].length, 58)
 assert.ok(long.includes("★ 12"))
 assert.ok(long.includes("…"))
 
+// --- The command line -------------------------------------------------------
+
+// What is typed, split into a verb and the rest. The leading colon is the
+// prompt, not part of the command.
+assert.deepEqual({ ...Model.parseCommand(":log latest") }, { name: "log", arg: "latest" })
+assert.deepEqual({ ...Model.parseCommand("log latest") }, { name: "log", arg: "latest" })
+assert.deepEqual({ ...Model.parseCommand(":refresh") }, { name: "refresh", arg: "" })
+assert.deepEqual({ ...Model.parseCommand(":") }, { name: "", arg: "" })
+assert.deepEqual({ ...Model.parseCommand("   ") }, { name: "", arg: "" })
+// An argument keeps its inner spaces; only the edges go.
+assert.equal(Model.parseCommand(":profile  @zangetsu02  ").arg, "@zangetsu02")
+
+// Completion: everything on an empty prompt, narrowed as you type.
+assert.ok(Model.commandsFor("").length >= 8)
+assert.deepEqual(Array.from(Model.commandsFor(":sta").map(c => c.name)), ["star", "starred"])
+assert.deepEqual(Array.from(Model.commandsFor(":starr").map(c => c.name)), ["starred"])
+assert.deepEqual(Array.from(Model.commandsFor(":nope").map(c => c.name)), [])
+// Each one carries the line the prompt shows beside it.
+for (const command of Model.commandsFor(""))
+  assert.ok(command.help && command.help.length > 0, `${command.name} has no help`)
+// Once a command is complete and an argument is being typed, stop suggesting.
+assert.deepEqual(Array.from(Model.commandsFor(":log latest").map(c => c.name)), [])
+
+// Every command maps to something the panel can actually do.
+const known = new Set(["log", "notifications", "starred", "profile", "refresh",
+                       "star", "open", "copy", "reply", "quit"])
+for (const command of Model.commandsFor(""))
+  assert.ok(known.has(command.name), `${command.name} is not wired to anything`)
+
 console.log("Model.js: tui checks passed")

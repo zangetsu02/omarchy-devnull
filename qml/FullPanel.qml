@@ -44,6 +44,9 @@ Item {
   // "log", "notifications", "starred", "profile" or "commit"; the last two
   // take an argument, the username or the commit id.
   property string page: "log"
+  // The command line. NORMAL until `:` opens it; the panel keeps taking keys
+  // only in NORMAL, the way a modal editor does.
+  property bool commandMode: false
   property string profileName: ""
   property string commitId: ""
   property var history: []
@@ -230,8 +233,29 @@ Item {
     "p": function () { root.goTo("profile", root.myUsername) }
   })
 
+  function runCommand(text) {
+    var parsed = Model.parseCommand(text)
+    var commit = activeList ? activeList.selectedCommit : null
+    switch (parsed.name) {
+    case "": break
+    case "log": root.goTo("log", ""); if (parsed.arg) feed.switchLog(parsed.arg); break
+    case "notifications": root.goTo("notifications", ""); break
+    case "starred": root.goTo("starred", ""); break
+    case "profile": root.openProfile(parsed.arg.replace(/^@/, "") || root.myUsername); break
+    case "refresh": feed.refresh(); break
+    case "star": if (commit) root.toggleStar(Model.rowFor(commit)); break
+    case "reply": if (commit) root.toggleReply(commit.id); break
+    case "open": if (commit) root.openOnSite(commit.html_url); break
+    case "copy": if (commit) root.copyLink(Model.rowFor(commit)); break
+    case "quit": root.dismiss(); break
+    default: root.say("E492: not an editor command: " + parsed.name, true); return
+    }
+  }
+
   function handleKey(event) {
     if (viewer.handleKey(event)) return true
+    if (root.commandMode) return false
+    if (event.text === ":") { root.commandMode = true; return true }
     if (event.key === Qt.Key_Escape) { dismiss(); return true }
     if (event.key === Qt.Key_Backspace) { back(); return true }
     var key = event.key === Qt.Key_Down ? "j" : event.key === Qt.Key_Up ? "k" : event.text
@@ -492,29 +516,92 @@ Item {
         view: root
       }
 
-      // --- Status line, like a terminal's last row ------------------------------------
+      // --- Status line and command line, the last two rows of a terminal ----------
 
-      Item {
+      Column {
         id: statusBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: Style.space(28)
-        HLine { anchors.top: parent.top }
-        Mono {
-          x: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - where.implicitWidth - Style.space(40)
-          elide: Text.ElideRight
-          text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
-          color: root.statusFailed ? root.destructive : Color.foreground
+
+        // What `:` offers, above the prompt, the way a completion popup sits.
+        Column {
+          id: completions
+          width: parent.width
+          visible: root.commandMode && Model.commandsFor(prompt.text).length > 0
+          Repeater {
+            model: root.commandMode ? Model.commandsFor(prompt.text) : []
+            Mono {
+              required property var modelData
+              leftPadding: Style.space(14)
+              topPadding: 1
+              bottomPadding: 1
+              width: completions.width
+              textFormat: Text.StyledText
+              text: "<font color='" + root.primary + "'>:" + root.esc(modelData.name) + "</font>"
+                + root.dimmed("   " + modelData.help)
+            }
+          }
         }
-        Mono {
-          id: where
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.StyledText
-          text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page === "commit" && commitPage.focused ? "commit " + commitPage.focused.short_hash : root.page) + "</font>"
-            + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
+
+        Item {
+          width: parent.width
+          height: Style.space(28)
+          HLine { anchors.top: parent.top }
+
+          Mono {
+            id: mode
+            x: Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            text: "NORMAL"
+            color: root.laneColor(3)
+            font.bold: true
+          }
+          Mono {
+            x: mode.x + mode.implicitWidth + Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            width: parent.width - x - where.implicitWidth - Style.space(40)
+            elide: Text.ElideRight
+            text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
+            color: root.statusFailed ? root.destructive : Color.foreground
+          }
+          Mono {
+            id: where
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            textFormat: Text.StyledText
+            text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page === "commit" && commitPage.focused ? "commit " + commitPage.focused.short_hash : root.page) + "</font>"
+              + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
+          }
+
+          // The prompt takes the whole row while it is open, as it does in vim.
+          Row {
+            anchors.verticalCenter: parent.verticalCenter
+            x: Style.space(14)
+            width: parent.width - Style.space(28)
+            visible: root.commandMode
+            spacing: 0
+            Mono { text: ":"; color: Color.foreground }
+            TextField {
+              id: prompt
+              width: parent.width - Style.space(10)
+              background: null
+              padding: 0
+              color: Color.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              onAccepted: { root.commandMode = false; root.runCommand(text); scope.forceActiveFocus() }
+              Keys.onEscapePressed: { root.commandMode = false; scope.forceActiveFocus() }
+              // Tab takes the first thing still on offer, as a shell would.
+              Keys.onTabPressed: {
+                var offers = Model.commandsFor(text)
+                if (offers.length > 0) text = offers[0].name + " "
+              }
+            }
+          }
         }
       }
     }
