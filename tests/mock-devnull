@@ -92,6 +92,7 @@ class State:
         self.spent_nonces = set()
         self.signature_covered_body = False
         self.verified_bodies = 0
+        self.public_calls = 0
         self.last_signature = ""
         self.public_key = ""
         self.next_response = None
@@ -166,6 +167,27 @@ def handler_for(state):
             return False
 
         def do_GET(self):
+            # The home page, as dev-null serves it: server rendered, the whole
+            # Latest log in its Inertia props, no signature asked for.
+            if self.path == "/":
+                state.last_uri = self.path
+                state.public_calls += 1
+                props = {"props": {"commits": {"data": [
+                    {"id": "01a15d37-0511-7071-a1ae-d28a502b4a24",
+                     "body": "from the public feed",
+                     "user": {"username": "zangetsu02", "name": "christian"},
+                     "stars_count": 4, "starred": False, "replies_count": 1,
+                     "status": "approved", "created_at": "2026-10-21T07:12:00.000000Z"}],
+                    "next_cursor": CURSOR}}}
+                body = ('<html><body><script data-page="app" type="application/json">'
+                        + json.dumps(props) + '</script></body></html>').encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
             # The public profile page: HTML with the Inertia data in it, unsigned.
             if self.path.startswith("/@"):
                 # Not in state.calls: those are the signed requests, one nonce each.

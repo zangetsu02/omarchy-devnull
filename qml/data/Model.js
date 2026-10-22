@@ -158,7 +158,10 @@ function pollDelay(panelOpen, settings) {
 // does, so it must not count.
 var BROKEN_AFTER = 3
 
-function tickCalls(panelOpen, broken, expanded) {
+function tickCalls(panelOpen, broken, expanded, signedOut) {
+    // Never paired: the home page carries the whole Latest log as JSON, with no
+    // signature, so the panel shows the real thing instead of an empty screen.
+    if (signedOut) return ["publicFeed"]
     if (broken) return []
     // Closed, only /me: it carries the unread count without marking anything read.
     if (!panelOpen) return ["me"]
@@ -167,7 +170,8 @@ function tickCalls(panelOpen, broken, expanded) {
     return expanded ? [] : ["feed"]
 }
 
-function openCalls(broken) {
+function openCalls(broken, signedOut) {
+    if (signedOut) return ["publicFeed"]
     // Broken, one probe: it costs nothing and it is how a re-pair gets noticed
     // without restarting the shell.
     if (broken) return ["me"]
@@ -201,6 +205,8 @@ function clearDraft(drafts, id) {
 
 function nextFailureCount(count, result) {
     if (!result) return 0
+    // Only a device the server refuses counts. Never having paired is not a
+    // failure, and neither is a wrong clock or a dead network.
     if (result.kind === "auth") return count + 1
     return count
 }
@@ -212,6 +218,10 @@ function isBroken(count) {
 function errorLine(result) {
     if (!result) return ""
     switch (result.kind) {
+    case "unpaired":
+        // Not an error: this machine has simply never been connected. The panel
+        // offers the connection itself; a red line would only be in the way.
+        return ""
     case "expired":
         return "dev-null refused the signature. Check this machine's clock."
     case "auth":
@@ -501,6 +511,25 @@ function headerFor(commit, width, nowMs) {
 
     var gap = width - Array.from(left).length - Array.from(tail).length
     return left + new Array(Math.max(1, gap) + 1).join(" ") + tail
+}
+
+// The home page's props name things differently from the API: the author is
+// `user`, and there is no short_hash or html_url. One shape reaches the views.
+function normalizePublic(commit) {
+    if (!commit) return commit
+    var author = commit.user || commit.author || {}
+    // The last seven of the id without its dashes, as CommitResource does it.
+    var plain = String(commit.id || "").replace(/-/g, "")
+    var hash = plain.length >= 7 ? plain.slice(-7) : plain
+    var out = merged(commit, {
+        author: author,
+        short_hash: commit.short_hash || hash,
+        html_url: commit.html_url
+            || (author.username && hash
+                ? "https://dev-null.sh/@" + author.username + "/commits/" + hash
+                : "")
+    })
+    return out
 }
 
 // --- The command line --------------------------------------------------------

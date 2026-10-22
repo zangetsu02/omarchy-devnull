@@ -33,6 +33,12 @@ def main():
                                 env=environment)
         return json.loads(result.stdout or "{}"), result.returncode
 
+    def run_in(home_dir, *args):
+        """Same, with a state directory that holds no key at all."""
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=dict(environment, DEVNULL_HOME=home_dir))
+        return json.loads(result.stdout or "{}"), result.returncode
+
     try:
         # The feed comes back as a list, newest first, with the fields the panel needs.
         feed, code = run("feed")
@@ -106,6 +112,25 @@ def main():
         state.next_response = {"code": "device_not_approved", "message": "Not approved."}
         answer, code = run("me")
         assert code == 1 and answer["kind"] == "auth" and answer["error"] == "Not approved."
+
+        # The public feed: no key, no signature, the same shape as the API one.
+        public, code = run_in(tempfile.gettempdir() + "/devnull-nokey", "feed", "--public")
+        assert code == 0, public
+        assert public["commits"][0]["short_hash"] == "02b4a24"
+        assert public["commits"][0]["author"]["username"] == "zangetsu02"
+        assert public["commits"][0]["html_url"].endswith("/@zangetsu02/commits/02b4a24")
+        assert public["next_cursor"] == mock_module.CURSOR
+        # It really went unsigned: it never joined the signed-call list.
+        assert state.public_calls == 1
+        assert state.last_uri == "/"
+
+        # Never paired is its own kind: the panel must not call it an error nor
+        # count it toward "re-pair me". A missing key is not a refused device.
+        bare_home = tempfile.TemporaryDirectory()
+        answer, code = run_in(bare_home.name, "me")
+        assert code == 1 and answer["kind"] == "unpaired", answer
+        assert "setup-devnull" in answer["error"]
+        bare_home.cleanup()
 
         print("read: all checks passed")
     finally:

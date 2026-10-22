@@ -93,7 +93,10 @@ def sign(message, key_path=None):
     """An armored SSH signature over the message, in the devnull-api namespace."""
     key_path = Path(key_path or KEY)
     if not key_path.exists():
-        raise BridgeError(f"No key at {key_path}. Run scripts/setup-devnull.", "auth")
+        # Never connected is not a refused device: the panel offers the
+        # connection rather than telling anyone something broke.
+        raise BridgeError("This machine has never been connected to dev-null. "
+                          "Run scripts/setup-devnull.", "unpaired")
     old_umask = os.umask(0o077)
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -190,8 +193,55 @@ def page(path, cursor):
     return answer.get("data", []), answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor")
 
 
+def public_feed():
+    """The Latest log with no key at all.
+
+    dev-null is server rendered, so its home page carries the whole log as JSON
+    in its Inertia props. The page names things differently from the API — the
+    author is `user`, and there is no short_hash or html_url — so those are
+    derived here the way CommitResource derives them, and one shape reaches the
+    panel whichever door the commits came through.
+    """
+    request = urllib.request.Request(BASE_URL + "/", headers={"Accept": "text/html"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            page_html = response.read().decode(errors="replace")
+    except urllib.error.URLError as error:
+        raise BridgeError(str(getattr(error, "reason", error)), "network") from error
+
+    found = re.search(r'data-page="app" type="application/json">(.*?)</script>',
+                      page_html, re.S)
+    if not found:
+        raise BridgeError("dev-null's home page did not carry its feed.", "http")
+    try:
+        commits = json.loads(found.group(1))["props"]["commits"]
+    except (ValueError, KeyError) as error:
+        raise BridgeError(f"Could not read the public feed: {error}", "http") from error
+
+    return {
+        "commits": [normalize_public(c) for c in commits.get("data", [])],
+        "next_cursor": commits.get("next_cursor"),
+        "public": True,
+    }
+
+
+def normalize_public(commit):
+    """What CommitResource would have sent, from what the page carries."""
+    author = commit.get("user") or commit.get("author") or {}
+    plain = str(commit.get("id") or "").replace("-", "")
+    short = plain[-7:] if len(plain) >= 7 else plain
+    out = dict(commit)
+    out["author"] = author
+    out.setdefault("short_hash", short)
+    if not out.get("html_url") and author.get("username") and short:
+        out["html_url"] = f"{BASE_URL}/@{author['username']}/commits/{short}"
+    return out
+
+
 def cmd_feed(*args):
-    """A log: latest (default), following or trending."""
+    """A log: latest (default), following or trending. --public needs no key."""
+    if "--public" in args:
+        return public_feed()
     args, cursor = paged(args)
     log = "latest"
     if len(args) == 2 and args[0] == "--log":

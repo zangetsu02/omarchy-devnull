@@ -143,4 +143,44 @@ assert.equal([...Model.frameLine("top", 2, "x")].length, 2)
 assert.equal(Model.frameLine("top", 1, ""), "")
 assert.equal(Model.frameLine("top", 0, ""), "")
 
+// --- Signed out -------------------------------------------------------------
+
+// The public feed comes from the home page's embedded props, which name things
+// differently from the API. One shape reaches the views, whichever door it came
+// through.
+const pub = Model.normalizePublic({
+  id: "01a15d37-0511-7071-a1ae-d28a502b4a24",
+  body: "hello", user: { username: "zangetsu02", name: "christian" },
+  stars_count: 4, starred: false, replies_count: 1, status: "approved",
+  created_at: "2026-10-21T07:12:00.000000Z",
+})
+// short_hash is the last seven of the id without its dashes (CommitResource:57).
+assert.equal(pub.short_hash, "02b4a24")
+assert.equal(pub.author.username, "zangetsu02")
+assert.equal(pub.html_url, "https://dev-null.sh/@zangetsu02/commits/02b4a24")
+assert.equal(pub.stars_count, 4)
+// A row built from it draws exactly like one from the API.
+assert.equal(Model.rowFor(pub).handle, "@zangetsu02")
+assert.equal([...Model.headerFor(pub, 58, Date.parse(pub.created_at))].length, 58)
+// Nothing to normalise, nothing thrown.
+assert.equal(Model.normalizePublic(null), null)
+assert.equal(Model.normalizePublic({}).short_hash, "")
+
+// Never paired is NOT an error: it has its own kind, it says nothing, and it
+// must never count toward the three strikes that mean "re-pair me".
+assert.equal(Model.errorLine({ kind: "unpaired", error: "No key" }), "")
+assert.equal(Model.nextFailureCount(2, { kind: "unpaired" }), 2)
+assert.equal(Model.isBroken(Model.nextFailureCount(0, { kind: "unpaired" })), false)
+// Revoked still is an error, and still counts.
+assert.match(Model.errorLine({ kind: "auth", error: "x" }), /setup-devnull/)
+assert.equal(Model.nextFailureCount(2, { kind: "auth" }), 3)
+
+// Signed out, the panel reads the public feed instead of the API.
+assert.deepEqual(Array.from(Model.tickCalls(false, false, false, true)), ["publicFeed"])
+assert.deepEqual(Array.from(Model.tickCalls(true, false, false, true)), ["publicFeed"])
+assert.deepEqual(Array.from(Model.openCalls(false, true)), ["publicFeed"])
+// Signed in, nothing changes.
+assert.deepEqual(Array.from(Model.tickCalls(false, false, false, false)), ["me"])
+assert.deepEqual(Array.from(Model.openCalls(false, false)), ["notifications", "feed"])
+
 console.log("Model.js: tui checks passed")
