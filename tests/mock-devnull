@@ -238,6 +238,8 @@ def handler_for(state):
                 self.reply(200, {"data": REPLIES[0], "ancestors": [COMMITS[0]]})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
                 self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
+            elif path in ("/api/v1/me/muted", "/api/v1/me/blocked"):
+                self.reply(200, {"data": [{"username": "noisy", "name": "Noisy"}]})
             elif path == "/api/v1/notifications":
                 state.notifications_calls += 1
                 self.reply(200, {"data": NOTIFICATIONS, "read_at": "2026-10-21T08:00:00Z"})
@@ -266,8 +268,25 @@ def handler_for(state):
                 self.reply(200, {"ok": True})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/reports", path):
                 self.reply(201, {"ok": True})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+/pasteis", path):
+                self.reply(200, {"data": dict(COMMITS[0], pasteis_count=3),
+                                 "pasteis_remaining": 2,
+                                 "pasteis_resets_at": "2026-10-24T00:00:00Z"})
             elif path == "/api/v1/devices":
                 self.reply(200, {"username": "zangetsu02"})
+            else:
+                self.reply(404, {"message": "Not Found."})
+
+        def do_PUT(self):
+            if not self.signed():
+                return
+            body = self.read_body()
+            self.record(body)
+            if self.forced():
+                return
+            if self.path.split("?")[0] == "/api/v1/me/pasteis-mode":
+                self.reply(200, {"data": {"username": "zangetsu02"},
+                                 "unread_notifications_count": 0})
             else:
                 self.reply(404, {"message": "Not Found."})
 

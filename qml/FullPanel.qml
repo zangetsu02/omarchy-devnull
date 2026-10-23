@@ -147,6 +147,9 @@ Item {
     say("Copied link to " + row.hash, false)
   }
   // A profile's link, for sharing it the way a commit's is shared.
+  readonly property int pasteisLeft: feed.pasteisLeft
+  function givePastel(id) { feed.pastel(id) }
+
   function copyProfileLink(username, url) {
     Quickshell.execDetached(["wl-copy", url || ("https://dev-null.sh/@" + username)])
     say("Copied link to @" + username, false)
@@ -317,6 +320,7 @@ Item {
     case "mute": if (commit) feed.mute(Model.rowFor(commit).username); break
     case "block": if (commit) feed.block(Model.rowFor(commit).username); break
     case "report": if (commit) feed.report(commit.id); break
+    case "pastel": if (commit) feed.pastel(commit.id); break
     case "connect": root.connect(); break
     case "quit": root.dismiss(); break
     default: root.say("E492: not an editor command: " + parsed.name, true); return

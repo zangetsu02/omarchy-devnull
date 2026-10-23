@@ -95,15 +95,70 @@ QtObject {
 
   // Safety, straight through to the bridge: the panel only reports what came
   // back, because each of these is somebody else's account.
+  // Who you muted and blocked, and the way back. A mute the client cannot lift
+  // is worse than no mute at all: it sends you to the website to undo it.
+  property var mutedUsers: []
+  property var blockedUsers: []
+
+  // Asked for once, by whatever first needs to know. Two calls, and only on a
+  // page that shows the buttons they answer for.
+  property bool _silencedLoaded: false
+
+  function loadSilencedOnce() {
+    if (root._silencedLoaded || root.signedOut) return
+    root._silencedLoaded = true
+    root.loadSilenced()
+  }
+
+  function loadSilenced() {
+    root.run(["muted"], function (a) { if (!a.error) root.mutedUsers = a.users || [] })
+    root.run(["blocked"], function (a) { if (!a.error) root.blockedUsers = a.users || [] })
+  }
+
   function mute(username) {
     root.run(["mute", username], function (answer) {
-      if (!answer.error) root.replyStatus = "Muted @" + username + "."
+      if (answer.error) return
+      root.replyStatus = "Muted @" + username + "."
+      root.loadSilenced()
+    })
+  }
+
+  function unmute(username) {
+    root.run(["unmute", username], function (answer) {
+      if (answer.error) return
+      root.replyStatus = "@" + username + " is back."
+      root.loadSilenced()
+    })
+  }
+
+  function unblock(username) {
+    root.run(["unblock", username], function (answer) {
+      if (answer.error) return
+      root.replyStatus = "@" + username + " is unblocked."
+      root.loadSilenced()
     })
   }
 
   function block(username) {
     root.run(["block", username], function (answer) {
-      if (!answer.error) root.replyStatus = "Blocked @" + username + "."
+      if (answer.error) return
+      root.replyStatus = "Blocked @" + username + "."
+      root.loadSilenced()
+    })
+  }
+
+  // How many pastéis are left today, as the server last reported. -1 means we
+  // have not given one yet and do not know.
+  property int pasteisLeft: -1
+
+  function pastel(id) {
+    root.run(["pastel", id], function (answer) {
+      if (answer.error) return
+      root.pasteisLeft = answer.pasteis_remaining === undefined ? -1 : answer.pasteis_remaining
+      root.commits = Model.mapCommit(root.commits, id, function (commit) {
+        return Model.merged(commit, { pasteis_count: answer.pasteis_count })
+      })
+      root.replyStatus = Model.pasteisLine(root.pasteisLeft)
     })
   }
 

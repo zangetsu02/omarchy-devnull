@@ -23,6 +23,9 @@ Item {
   // Set by the row above when this is the last reply in its thread: it decides
   // whether the rail closes with ╰ or carries on with ├.
   property bool lastReply: false
+  // The last row in the list: its lane has nothing below to reach, so it stops
+  // at the commit instead of trailing off into the gap under it.
+  property bool last: false
 
   readonly property var row: Model.rowFor(commit)
   readonly property color lane: view.laneColor(row.lane)
@@ -46,14 +49,17 @@ Item {
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
 
-  // The cursor line, and nothing else. One marker: the filled node in the rail
-  // says which row, this says it again quietly across the width. A bar beside
-  // it was a third way of saying the same thing.
-  Rectangle {
-    anchors.fill: parent
-    anchors.leftMargin: root.textCol
+  // The cursor, in its own column: a solid bar down the whole row.
+  Rail {
     visible: root.selected
-    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05)
+    x: 0
+    y: root.pad
+    metrics: grid
+    cells: 1
+    headColor: root.view.primary
+    tailColor: root.view.primary
+    head: Model.GLYPHS.cursorBar
+    tail: Model.GLYPHS.cursorBar
   }
 
   // --- The rail: drawn as a terminal would draw it ----------------------------
@@ -61,6 +67,7 @@ Item {
   Rail {
     x: grid.cell * root.laneCol
     y: root.pad
+    rowHeight: root.height - root.pad - (root.last ? root.pad * 2 : 0)
     metrics: grid
     cells: 2
     headColor: root.lane
@@ -209,6 +216,14 @@ Item {
         label: root.thread ? "hide replies" : Model.plural(root.row.replies, "reply", "replies")
         restColor: root.view.primary
         onClicked: root.view.toggleThread(root.row.id)
+      }
+      // A pastel comes out of a daily allowance, so the button goes quiet once
+      // the day's are spent rather than offering one the server would refuse.
+      ActionButton {
+        visible: root.topLevel && root.view.pasteisLeft !== 0
+        icon: Model.ICONS.pastel
+        label: root.row.pasteis > 0 ? String(root.row.pasteis) : ""
+        onClicked: root.view.givePastel(root.row.id)
       }
       ActionButton {
         icon: Model.ICONS.copy

@@ -113,4 +113,15 @@ assert.deepEqual(Object.keys(Model.draftsFromJson('{"a": 3, "b": "ok"}')), ["b"]
 // An empty draft is not worth keeping.
 assert.equal(Model.draftsToJson({ a: "", b: "real" }), JSON.stringify({ b: "real" }))
 
+// Running out of pastéis is not a failure the panel should dress in red: the
+// allowance comes back tomorrow.
+assert.match(Model.errorLine({ kind: "exhausted", error: "none left" }), /tomorrow/i)
+assert.equal(Model.nextFailureCount(2, { kind: "exhausted" }), 2)
+
+// What the panel says after a pastel, which depends only on what is left.
+assert.equal(Model.pasteisLine(2), "Pastel given. 2 pastéis left today.")
+assert.equal(Model.pasteisLine(1), "Pastel given. 1 pastel left today.")
+assert.equal(Model.pasteisLine(0), "That was your last pastel for today.")
+assert.equal(Model.pasteisLine(-1), "Pastel given.")
+
 console.log("service: all checks passed")

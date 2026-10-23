@@ -63,6 +63,11 @@ assert.equal(Model.headerRight(bare), "3m")
 // A commit still in moderation says so, next to its age.
 assert.ok(Model.headerRight({ ...commit, status: "pending" }).includes("held"))
 
+// The pastéis a commit has been given, so a row can show the count beside the
+// button without reaching into the raw commit.
+assert.equal(Model.rowFor({ id: "u", pasteis_count: 4 }).pasteis, 4)
+assert.equal(Model.rowFor({ id: "u" }).pasteis, 0)
+
 // An author the server did not send does not crash the line.
 assert.equal(Model.headerLeft({ short_hash: "0000000" }), "0000000  @?")
 assert.equal(Model.headerLeft(null), "")
@@ -111,6 +116,16 @@ assert.deepEqual(Array.from(Model.mentionsFor("@zxc", seen)), ["zxc"])
 assert.equal(Model.completeMention("hi @z", "zangetsu02"), "hi @zangetsu02 ")
 assert.equal(Model.completeMention("@n", "ndk98z"), "@ndk98z ")
 assert.equal(Model.completeMention("no at sign", "ndk98z"), "no at sign")
+
+// Whether a list of accounts holds this one, so a mute button can offer to
+// lift the mute instead of setting it again.
+const silenced = [{ username: "noisy" }, { username: "Loud" }]
+assert.equal(Model.silences(silenced, "noisy"), true)
+assert.equal(Model.silences(silenced, "loud"), true)   // handles are not case
+assert.equal(Model.silences(silenced, "quiet"), false)
+assert.equal(Model.silences([], "noisy"), false)
+assert.equal(Model.silences(null, "noisy"), false)
+assert.equal(Model.silences(silenced, ""), false)
 
 // --- Frames -----------------------------------------------------------------
 

@@ -26,7 +26,7 @@ var ICONS = {
     star: "\u{f04ce}", unstarred: "\u{f04d2}", reply: "\u{f045a}", quote: "\u{f10d}",
     copy: "\u{f018f}", expand: "\u{f0142}", collapse: "\u{f0140}",
     follow: "\u{f0415}", following: "\u{f012c}",
-    mute: "\u{f075f}", block: "\u{f0159}"
+    mute: "\u{f075f}", block: "\u{f0159}", pastel: "\u{f0e0e}"
 }
 
 // --- Small immutable helpers ----------------------------------------------------
@@ -75,6 +75,7 @@ function rowFor(commit) {
         stars: commit.stars_count || 0,
         starred: commit.starred === true,
         replies: commit.replies_count || 0,
+        pasteis: commit.pasteis_count || 0,
         pending: commit.status === "pending",
         url: commit.html_url || "",
         created: commit.created_at || "",
@@ -258,6 +259,8 @@ function errorLine(result) {
         return "This machine is not paired any more. Run scripts/setup-devnull."
     case "rules":
         return "Accept the commit rules on dev-null.sh once, then try again."
+    case "exhausted":
+        return "That was your last pastel for today. More tomorrow."
     case "limited":
         return "Too many requests for now. It will catch up by itself."
     case "network":
@@ -265,6 +268,24 @@ function errorLine(result) {
     default:
         return result.error || "Something went wrong."
     }
+}
+
+// What the panel says after giving a pastel. The count is the whole message:
+// nobody needs to be told what they just did, only what is left.
+// Whether a list of accounts holds this handle, so a button can offer to lift
+// what it set. dev-null compares handles without case, so this does too.
+function silences(users, username) {
+    if (!username) return false
+    var wanted = String(username).toLowerCase()
+    for (var i = 0; i < (users || []).length; i++)
+        if (String((users[i] || {}).username || "").toLowerCase() === wanted) return true
+    return false
+}
+
+function pasteisLine(left) {
+    if (left < 0) return "Pastel given."
+    if (left === 0) return "That was your last pastel for today."
+    return "Pastel given. " + plural(left, "pastel", "pastéis") + " left today."
 }
 
 function withStar(commit, starred) {
@@ -493,7 +514,7 @@ var GLYPHS = {
     bar: "│", dottedBar: "┆", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
     topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
     star: "\u{f04ce}", unstarred: "\u{f04d2}", replies: "\u{f045a}",
-    ellipsis: "…"
+    cursorBar: "▌", ellipsis: "…"
 }
 
 // One marker, not two. Filled is the cursor, the way LazyVim keeps `cursorline`

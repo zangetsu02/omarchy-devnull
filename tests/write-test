@@ -117,6 +117,38 @@ def main():
         answer, code = run("report", ID)
         assert code == 1 and answer["error"] == "That commit is unavailable."
 
+        # A pastel comes out of a daily allowance, and the answer says how many
+        # are left, so the panel can stop offering one that would fail.
+        answer, code = run("pastel", ID)
+        assert code == 0, answer
+        assert state.last_uri == f"/api/v1/commits/{ID}/pasteis"
+        assert answer["pasteis_remaining"] == 2, answer
+        assert answer["pasteis_count"] == 3, answer
+
+        # None left is its own kind, not a generic failure: nothing is broken
+        # and trying again tomorrow is the whole fix.
+        state.next_status = 422
+        state.next_response = {"code": "pasteis_exhausted",
+                               "message": "You have given out all your pastéis today."}
+        answer, code = run("pastel", ID)
+        assert code == 1 and answer["kind"] == "exhausted", answer
+
+        # Pastéis mode is a switch on your own account.
+        answer, code = run("pasteis-mode", "on")
+        assert code == 0 and json.loads(state.last_body) == {"enabled": True}
+        answer, code = run("pasteis-mode", "off")
+        assert code == 0 and json.loads(state.last_body) == {"enabled": False}
+        answer, code = run("pasteis-mode", "maybe")
+        assert code == 1 and "maybe" in answer["error"]
+
+        # Who you muted and blocked, so it can be undone from the client that
+        # did it. A mute you cannot lift is worse than no mute at all.
+        answer, code = run("muted")
+        assert code == 0 and state.last_uri == "/api/v1/me/muted"
+        assert [u["username"] for u in answer["users"]] == ["noisy"], answer
+        answer, code = run("blocked")
+        assert code == 0 and state.last_uri == "/api/v1/me/blocked"
+
         print("write: all checks passed")
     finally:
         stop()

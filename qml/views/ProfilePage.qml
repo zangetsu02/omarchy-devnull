@@ -13,6 +13,9 @@ Item {
 
   required property var view
   required property var service
+
+  // The mute and block buttons have to know which way round they are.
+  Component.onCompleted: service.loadSilencedOnce()
   property string username: ""
 
   property var user: ({})
@@ -167,17 +170,23 @@ Item {
       // Someone else's account: the two ways to stop seeing it. Blocking is
       // the heavier one and says so, because it works both ways.
       ActionButton {
+        readonly property bool silenced: Model.silences(root.service.mutedUsers, root.username)
         visible: !root.isMe
         icon: Model.ICONS.mute
-        label: "mute"
-        onClicked: root.service.mute(root.username)
+        label: silenced ? "unmute" : "mute"
+        active: silenced
+        onClicked: silenced ? root.service.unmute(root.username)
+                            : root.service.mute(root.username)
       }
       ActionButton {
+        readonly property bool silenced: Model.silences(root.service.blockedUsers, root.username)
         visible: !root.isMe
         icon: Model.ICONS.block
-        label: "block"
-        restColor: root.view.destructive
-        onClicked: root.service.block(root.username)
+        label: silenced ? "unblock" : "block"
+        active: silenced
+        restColor: silenced ? root.view.primary : root.view.destructive
+        onClicked: silenced ? root.service.unblock(root.username)
+                            : root.service.block(root.username)
       }
     }
 

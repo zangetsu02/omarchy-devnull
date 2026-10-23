@@ -17,6 +17,10 @@ Usage: devnull <command> [arguments]
   block <user>           block someone both ways
   unblock <user>         undo that
   report <id>            send a commit to the moderators
+  pastel <id>            give a commit one of your pastéis for today
+  pasteis-mode on|off    turn pastéis mode on or off
+  muted                  who you muted
+  blocked                who you blocked
   replies <id> [--cursor C]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
@@ -79,6 +83,8 @@ KINDS = {
     "invalid_signature": "expired",
     "commit_rules_required": "rules",
     "rate_limited": "limited",
+    # Nothing is broken: the day's allowance is simply spent.
+    "pasteis_exhausted": "exhausted",
 }
 
 
@@ -439,6 +445,32 @@ def cmd_report(commit_id):
     return call("POST", f"/api/v1/commits/{commit_id}/reports")
 
 
+def cmd_pastel(commit_id):
+    """One pastel out of the day's allowance. The answer carries how many are
+    left, so the panel can stop offering one that would be refused."""
+    answer = call("POST", f"/api/v1/commits/{commit_id}/pasteis")
+    commit = answer.get("data", {})
+    return {
+        "pasteis_count": commit.get("pasteis_count"),
+        "pasteis_remaining": answer.get("pasteis_remaining"),
+        "pasteis_resets_at": answer.get("pasteis_resets_at"),
+    }
+
+
+def cmd_pasteis_mode(state):
+    if state not in ("on", "off"):
+        raise BridgeError(f"Pastéis mode is on or off, not {state!r}.", "http")
+    return call("PUT", "/api/v1/me/pasteis-mode", {"enabled": state == "on"})
+
+
+def cmd_muted():
+    return {"users": call("GET", "/api/v1/me/muted").get("data", [])}
+
+
+def cmd_blocked():
+    return {"users": call("GET", "/api/v1/me/blocked").get("data", [])}
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -465,7 +497,9 @@ COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "following": per_user("/api/v1/users/{username}/following"),
             "mute": cmd_mute, "unmute": cmd_unmute,
             "block": cmd_block, "unblock": cmd_unblock,
-            "report": cmd_report}
+            "report": cmd_report, "pastel": cmd_pastel,
+            "pasteis-mode": cmd_pasteis_mode,
+            "muted": cmd_muted, "blocked": cmd_blocked}
 
 
 def main():
