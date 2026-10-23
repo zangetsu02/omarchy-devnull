@@ -6,7 +6,8 @@ import "../data/Model.js" as Model
 
 // One commit as `git log --graph` prints it, drawn the way a terminal would:
 // the rail is characters in the author's lane, then the avatar in two cells,
-// one header line laid out by Model.headerFor, the body, and the actions.
+// one header line — hash and handle left, age and counts anchored right — the
+// body, and the actions.
 // Replies are the same row one level in, closing the rail with ╰, and nest
 // through a Loader of this same file.
 //
@@ -84,18 +85,30 @@ Item {
     width: root.width - x - Style.space(14)
     spacing: Style.space(4)
 
-    // One line, laid out by Model.headerFor so it fills the column exactly:
-    // hash, handle, then age and the counts pushed right. Nothing in it is
-    // clicked on its own — the keyboard opens what a word used to.
-    Mono {
+    // The header: hash and handle on the left, age and counts anchored right.
+    // Nothing here is padded — QML anchors, and anchors cannot drift.
+    Item {
       width: body.width
-      font.pixelSize: Style.font.body
-      color: root.selected ? Color.foreground : Color.muted
-      textFormat: Text.PlainText
-      elide: Text.ElideRight
-      text: root.row.deleted
-        ? "[deleted]"
-        : (root.cell > 0 ? Model.headerFor(root.commit, body.width / root.cell, root.view.now) : "")
+      height: hashLine.implicitHeight
+
+      Mono {
+        id: hashLine
+        width: parent.width - counts.implicitWidth - grid.cell * 2
+        font.pixelSize: grid.size
+        color: root.selected ? Color.foreground : Color.muted
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: root.row.deleted ? "[deleted]" : Model.headerLeft(root.commit)
+      }
+
+      Mono {
+        id: counts
+        anchors.right: parent.right
+        font.pixelSize: grid.size
+        color: Color.muted
+        textFormat: Text.PlainText
+        text: root.row.deleted ? "" : Model.headerRight(root.commit, root.view.now)
+      }
     }
 
     // Selectable, the way text in a terminal is. A drag here selects rather

@@ -231,7 +231,13 @@ def public_feed():
 
 
 def normalize_public(commit):
-    """What CommitResource would have sent, from what the page carries."""
+    """What CommitResource would have sent, from what the page carries.
+
+    The page names the author `user` at EVERY depth, so this owns the nested
+    commits too: a reply preview or a quote left unconverted draws as "@?".
+    """
+    if not commit:
+        return commit
     author = commit.get("user") or commit.get("author") or {}
     plain = str(commit.get("id") or "").replace("-", "")
     short = plain[-7:] if len(plain) >= 7 else plain
@@ -240,6 +246,13 @@ def normalize_public(commit):
     out.setdefault("short_hash", short)
     if not out.get("html_url") and author.get("username") and short:
         out["html_url"] = f"{BASE_URL}/@{author['username']}/commits/{short}"
+
+    if out.get("quoted_commit"):
+        out["quoted_commit"] = normalize_public(out["quoted_commit"])
+    preview = out.get("reply_preview") or {}
+    if preview.get("data"):
+        out["reply_preview"] = dict(
+            preview, data=[normalize_public(reply) for reply in preview["data"]])
     return out
 
 

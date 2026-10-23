@@ -357,13 +357,26 @@ Panel {
       width: glance.width - x - Style.space(8)
       spacing: Style.space(3)
 
-      Mono {
+      Item {
         width: content.width
-        color: Color.muted
-        textFormat: Text.PlainText
-        text: root.cell > 0
-          ? Model.headerFor(glance.modelData, Math.floor(content.width / root.cell), root.now)
-          : ""
+        height: who.implicitHeight
+        Mono {
+          id: who
+          width: parent.width - age.implicitWidth - grid.cell
+          font.pixelSize: grid.size
+          color: Color.muted
+          elide: Text.ElideRight
+          textFormat: Text.PlainText
+          text: Model.headerLeft(glance.modelData)
+        }
+        Mono {
+          id: age
+          anchors.right: parent.right
+          font.pixelSize: grid.size
+          color: Color.muted
+          textFormat: Text.PlainText
+          text: Model.headerRight(glance.modelData, root.now)
+        }
       }
       Mono {
         width: content.width

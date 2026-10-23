@@ -177,7 +177,23 @@ def handler_for(state):
                      "body": "from the public feed",
                      "user": {"username": "zangetsu02", "name": "christian"},
                      "stars_count": 4, "starred": False, "replies_count": 1,
-                     "status": "approved", "created_at": "2026-10-21T07:12:00.000000Z"}],
+                     "status": "approved", "created_at": "2026-10-21T07:12:00.000000Z",
+                     # The page names the author `user` at EVERY depth, so a
+                     # fixture without these cannot catch a shallow adapter.
+                     "reply_preview": {"data": [
+                         {"id": "01a15d76-9c69-7123-bd48-48dc6b82dce4",
+                          "body": "Seems like github pages tho",
+                          "user": {"username": "pptx704", "name": "Rafeed"},
+                          "stars_count": 0, "replies_count": 0,
+                          "status": "approved",
+                          "created_at": "2026-10-21T07:56:00.000000Z"}]},
+                     "quoted_commit": {
+                         "id": "01a15000-0000-7000-8000-00000000abc1234",
+                         "body": "the quoted one",
+                         "user": {"username": "ndk98z", "name": "Khanhz"},
+                         "stars_count": 2, "replies_count": 0,
+                         "status": "approved",
+                         "created_at": "2026-10-21T06:00:00.000000Z"}}],
                     "next_cursor": CURSOR}}}
                 body = ('<html><body><script data-page="app" type="application/json">'
                         + json.dumps(props) + '</script></body></html>').encode()

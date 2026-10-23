@@ -16,7 +16,7 @@ Mono {
   Metrics { id: grid }
 
   color: lineColor
-  font.pixelSize: Style.font.body
+  font.pixelSize: grid.size
   textFormat: Text.PlainText
   text: cell > 0 ? Model.frameLine(kind, width / cell, title) : ""
 }

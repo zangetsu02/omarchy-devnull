@@ -31,6 +31,7 @@ Column {
       required property int index
       width: root.metrics.cell * root.cells
       height: root.metrics.lineH
+      font.pixelSize: root.metrics.size
       verticalAlignment: Text.AlignVCenter
       color: index === 0 ? root.headColor : root.tailColor
       text: index === 0 ? root.head : Model.rail("body", {})

@@ -497,85 +497,27 @@ function _cut(text, room) {
     return chars.slice(0, room - 1).join("") + GLYPHS.ellipsis
 }
 
-// "d453634  @zangetsu02        2m   ★ 4   ⤷ 1", filling the column exactly.
-// The counts are pushed right and never dropped: a crowded handle is cut
-// instead, because the line has no second row to wrap onto.
-function headerFor(commit, width, nowMs) {
-    if (!isFinite(width) || width < 1) return ""
-    var c = commit || {}
-    var author = c.author || {}
-    var right = [ageFor(c.created_at, nowMs === undefined ? Date.now() : nowMs)]
-    // Inside the padded line, not appended after it: a word added afterwards
-    // makes exactly the held rows wider than every other row.
-    if (c.status === "pending") right.push("held")
-    if (c.stars_count > 0) right.push((c.starred ? GLYPHS.star : GLYPHS.unstarred) + " " + c.stars_count)
-    if (c.replies_count > 0) right.push(GLYPHS.replies + " " + c.replies_count)
-    var tail = right.filter(function (part) { return !!part }).join("   ")
-
-    var left = (c.short_hash || "") + "  @" + (author.username || "?")
-    var room = width - Array.from(tail).length - 2
-    left = _cut(left, Math.max(0, room))
-
-    var gap = width - Array.from(left).length - Array.from(tail).length
-    return left + new Array(Math.max(1, gap) + 1).join(" ") + tail
-}
-
-// The home page's props name things differently from the API: the author is
-// `user`, and there is no short_hash or html_url. One shape reaches the views.
-function normalizePublic(commit) {
-    if (!commit) return commit
-    var author = commit.user || commit.author || {}
-    // The last seven of the id without its dashes, as CommitResource does it.
-    var plain = String(commit.id || "").replace(/-/g, "")
-    var hash = plain.length >= 7 ? plain.slice(-7) : plain
-    var out = merged(commit, {
-        author: author,
-        short_hash: commit.short_hash || hash,
-        html_url: commit.html_url
-            || (author.username && hash
-                ? "https://dev-null.sh/@" + author.username + "/commits/" + hash
-                : "")
-    })
-    return out
-}
-
-// --- The command line --------------------------------------------------------
+// A row's header, in two pieces, because QML anchors better than this can pad.
 //
-// `:` is for what a single key does not deserve. Every command here maps to
-// something the panel already does with a key; nothing new lives behind one.
+// It used to be one string padded to a column count. That was a lie: glyph
+// positions round to whole pixels, so the line painted wider than the column it
+// was padded to and Qt elided the counts off the end. Anchoring the right piece
+// costs nothing and cannot drift.
 
-var COMMANDS = [
-    { name: "log", help: "following · latest · trending" },
-    { name: "notifications", help: "what happened to you" },
-    { name: "profile", help: "yours, or @someone" },
-    { name: "refresh", help: "reload what is on screen" },
-    // `star` before `starred`: a prefix must be offered before what extends it.
-    { name: "star", help: "star the commit under the cursor" },
-    { name: "starred", help: "commits you starred" },
-    { name: "reply", help: "reply to it" },
-    { name: "open", help: "open it on dev-null.sh" },
-    { name: "copy", help: "copy its link" },
-    { name: "connect", help: "connect this machine to dev-null" },
-    { name: "quit", help: "close the client" }
-]
-
-function parseCommand(text) {
-    var line = String(text || "").replace(/^:/, "").trim()
-    if (line === "") return { name: "", arg: "" }
-    var cut = line.indexOf(" ")
-    if (cut < 0) return { name: line, arg: "" }
-    return { name: line.slice(0, cut), arg: line.slice(cut + 1).trim() }
+function headerLeft(commit) {
+    if (!commit) return ""
+    var author = commit.author || {}
+    return (commit.short_hash || "") + "  @" + (author.username || "?")
 }
 
-// What to offer under the prompt. Once an argument is being typed the verb is
-// settled, so the list gets out of the way.
-function commandsFor(text) {
-    var typed = String(text || "").replace(/^:/, "")
-    if (typed.indexOf(" ") >= 0) return []
-    var out = []
-    for (var i = 0; i < COMMANDS.length; i++)
-        if (COMMANDS[i].name.indexOf(typed) === 0) out.push(COMMANDS[i])
-    return out
+function headerRight(commit, nowMs) {
+    if (!commit) return ""
+    var parts = [ageFor(commit.created_at, nowMs === undefined ? Date.now() : nowMs)]
+    if (commit.status === "pending") parts.push("held")
+    if (commit.stars_count > 0)
+        parts.push((commit.starred ? GLYPHS.star : GLYPHS.unstarred) + " " + commit.stars_count)
+    if (commit.replies_count > 0) parts.push(GLYPHS.replies + " " + commit.replies_count)
+    return parts.filter(function (part) { return !!part }).join("   ")
 }
 
 // A frame's top or bottom border, filling its width exactly. The title sits in

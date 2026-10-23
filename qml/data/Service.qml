@@ -65,7 +65,9 @@ QtObject {
         if (root.signedOut && !wasSignedOut) root.dispatch("publicFeed")
       } else {
         root._authFailures = Model.nextFailureCount(root._authFailures, null)
-        root.signedOut = false
+        // The public feed needs no key, so its success proves nothing about
+        // pairing: only a signed call can say this machine is connected.
+        if (!answer.public) root.signedOut = false
         root.lastError = ""
       }
       if (done) done(answer)

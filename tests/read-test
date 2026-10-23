@@ -120,6 +120,17 @@ def main():
         assert public["commits"][0]["author"]["username"] == "zangetsu02"
         assert public["commits"][0]["html_url"].endswith("/@zangetsu02/commits/02b4a24")
         assert public["next_cursor"] == mock_module.CURSOR
+        # The page names the author `user` at every depth. An adapter that
+        # converts only the top level leaves every inline reply drawing "@?".
+        first = public["commits"][0]
+        reply = first["reply_preview"]["data"][0]
+        assert reply["author"]["username"] == "pptx704", reply
+        assert reply["short_hash"] == reply["id"].replace("-", "")[-7:], reply["short_hash"]
+        assert reply["html_url"].endswith("/@pptx704/commits/" + reply["short_hash"])
+        quoted = first["quoted_commit"]
+        assert quoted["author"]["username"] == "ndk98z", quoted
+        assert quoted["short_hash"] and quoted["html_url"]
+
         # It really went unsigned: it never joined the signed-call list.
         assert state.public_calls == 1
         assert state.last_uri == "/"

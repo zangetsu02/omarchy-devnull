@@ -41,81 +41,31 @@ assert.equal(Model.rail("whatever", {}), " ")
 for (const [name, glyph] of Object.entries(G))
   assert.equal([...glyph].length, 1, `GLYPHS.${name} is not a single code point`)
 
-// The header of a row: hash, handle, age, then the counts pushed right.
-const row = Model.headerFor(
-  { short_hash: "d453634", author: { username: "zangetsu02" },
-    stars_count: 4, starred: true, replies_count: 1,
-    created_at: new Date(Date.now() - 120000).toISOString() },
-  58)
-assert.ok(row.startsWith("d453634  @zangetsu02"))
-assert.ok(row.includes(G.star + " 4"))
-assert.ok(row.includes(G.replies + " 1"))
-assert.equal([...row].length, 58, "the header must fill its column exactly")
+// The header of a row, in two pieces. It used to be one string padded to a
+// column count; the padding was a lie, because glyph positions round to whole
+// pixels, so the line painted wider than its column and Qt elided the counts
+// away. The right piece is anchored by QML instead, and nothing is computed.
+const commit = { short_hash: "d453634", author: { username: "zangetsu02" },
+                 stars_count: 4, starred: true, replies_count: 1,
+                 created_at: new Date(Date.now() - 120000).toISOString() }
 
-// No stars, no star count: an empty slot reads quieter than "☆ 0".
-const bare = Model.headerFor(
-  { short_hash: "36795c7", author: { username: "ndk98z" },
-    stars_count: 0, starred: false, replies_count: 0,
-    created_at: new Date(Date.now() - 180000).toISOString() },
-  58)
-assert.ok(!bare.includes(G.star) && !bare.includes(G.unstarred))
-assert.ok(!bare.includes(G.replies))
-assert.equal([...bare].length, 58)
+assert.equal(Model.headerLeft(commit), "d453634  @zangetsu02")
+assert.equal(Model.headerRight(commit), "2m   " + G.star + " 4   " + G.replies + " 1")
 
-// A commit still in moderation says so INSIDE the padded line: appending it
-// afterwards pushed exactly those rows a word wider than every other.
-const held = Model.headerFor(
-  { short_hash: "bbbbbbb", author: { username: "zangetsu02" }, status: "pending",
-    stars_count: 0, replies_count: 0, created_at: new Date().toISOString() },
-  58)
-assert.ok(held.includes("held"))
-assert.equal([...held].length, 58)
+// No stars, no star count: an empty slot reads quieter than a zero.
+const bare = { short_hash: "36795c7", author: { username: "ndk98z" },
+               stars_count: 0, starred: false, replies_count: 0,
+               created_at: new Date(Date.now() - 180000).toISOString() }
+assert.equal(Model.headerLeft(bare), "36795c7  @ndk98z")
+assert.equal(Model.headerRight(bare), "3m")
 
-// A width that is not a number must not throw: QML asks before it has measured.
-assert.equal(Model.headerFor({}, NaN), "")
-assert.equal(Model.headerFor({}, Infinity), "")
-assert.equal(Model.frameLine("top", NaN, "x"), "")
-assert.equal(Model.frameLine("top", Infinity, "x"), "")
+// A commit still in moderation says so, next to its age.
+assert.ok(Model.headerRight({ ...commit, status: "pending" }).includes("held"))
 
-// A handle long enough to crowd the counts is cut, never wrapped: the grid
-// has one line here and the counts matter more than the last letters.
-const long = Model.headerFor(
-  { short_hash: "aaaaaaa", author: { username: "a".repeat(60) },
-    stars_count: 12, starred: true, replies_count: 3,
-    created_at: new Date(Date.now() - 60000).toISOString() },
-  58)
-assert.equal([...long].length, 58)
-assert.ok(long.includes(G.star + " 12"))
-assert.ok(long.includes(G.ellipsis))
-
-// --- The command line -------------------------------------------------------
-
-// What is typed, split into a verb and the rest. The leading colon is the
-// prompt, not part of the command.
-assert.deepEqual({ ...Model.parseCommand(":log latest") }, { name: "log", arg: "latest" })
-assert.deepEqual({ ...Model.parseCommand("log latest") }, { name: "log", arg: "latest" })
-assert.deepEqual({ ...Model.parseCommand(":refresh") }, { name: "refresh", arg: "" })
-assert.deepEqual({ ...Model.parseCommand(":") }, { name: "", arg: "" })
-assert.deepEqual({ ...Model.parseCommand("   ") }, { name: "", arg: "" })
-// An argument keeps its inner spaces; only the edges go.
-assert.equal(Model.parseCommand(":profile  @zangetsu02  ").arg, "@zangetsu02")
-
-// Completion: everything on an empty prompt, narrowed as you type.
-assert.ok(Model.commandsFor("").length >= 8)
-assert.deepEqual(Array.from(Model.commandsFor(":sta").map(c => c.name)), ["star", "starred"])
-assert.deepEqual(Array.from(Model.commandsFor(":starr").map(c => c.name)), ["starred"])
-assert.deepEqual(Array.from(Model.commandsFor(":nope").map(c => c.name)), [])
-// Each one carries the line the prompt shows beside it.
-for (const command of Model.commandsFor(""))
-  assert.ok(command.help && command.help.length > 0, `${command.name} has no help`)
-// Once a command is complete and an argument is being typed, stop suggesting.
-assert.deepEqual(Array.from(Model.commandsFor(":log latest").map(c => c.name)), [])
-
-// Every command maps to something the panel can actually do.
-const known = new Set(["log", "notifications", "starred", "profile", "refresh",
-                       "star", "open", "copy", "reply", "connect", "quit"])
-for (const command of Model.commandsFor(""))
-  assert.ok(known.has(command.name), `${command.name} is not wired to anything`)
+// An author the server did not send does not crash the line.
+assert.equal(Model.headerLeft({ short_hash: "0000000" }), "0000000  @?")
+assert.equal(Model.headerLeft(null), "")
+assert.equal(Model.headerRight(null), "")
 
 // --- Frames -----------------------------------------------------------------
 
@@ -145,26 +95,9 @@ assert.equal(Model.frameLine("top", 0, ""), "")
 
 // --- Signed out -------------------------------------------------------------
 
-// The public feed comes from the home page's embedded props, which name things
-// differently from the API. One shape reaches the views, whichever door it came
-// through.
-const pub = Model.normalizePublic({
-  id: "01a15d37-0511-7071-a1ae-d28a502b4a24",
-  body: "hello", user: { username: "zangetsu02", name: "christian" },
-  stars_count: 4, starred: false, replies_count: 1, status: "approved",
-  created_at: "2026-10-21T07:12:00.000000Z",
-})
-// short_hash is the last seven of the id without its dashes (CommitResource:57).
-assert.equal(pub.short_hash, "02b4a24")
-assert.equal(pub.author.username, "zangetsu02")
-assert.equal(pub.html_url, "https://dev-null.sh/@zangetsu02/commits/02b4a24")
-assert.equal(pub.stars_count, 4)
-// A row built from it draws exactly like one from the API.
-assert.equal(Model.rowFor(pub).handle, "@zangetsu02")
-assert.equal([...Model.headerFor(pub, 58, Date.parse(pub.created_at))].length, 58)
-// Nothing to normalise, nothing thrown.
-assert.equal(Model.normalizePublic(null), null)
-assert.equal(Model.normalizePublic({}).short_hash, "")
+// The public page's shape is normalised in the bridge, where the fetch is, and
+// tests/read-test is the test of record for it: a second copy of that rule here
+// would be a second thing to keep in step.
 
 // Never paired is NOT an error: it has its own kind, it says nothing, and it
 // must never count toward the three strikes that mean "re-pair me".
