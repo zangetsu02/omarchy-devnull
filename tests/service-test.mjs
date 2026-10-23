@@ -94,4 +94,34 @@ assert.deepEqual(Array.from(Model.tickCalls({ expanded: true })), ["me"])
 assert.deepEqual(Array.from(Model.openCalls({})), ["notifications", "feed"])
 assert.deepEqual(Array.from(Model.openCalls({ broken: true })), ["me"])
 
+// Drafts survive a restart, so a commit half written when the shell reloads is
+// still there. They go out as JSON and come back the same shape.
+const kept = Model.withDraft(Model.withDraft({}, "a", "half a thou"), "b", "another")
+const saved = Model.draftsToJson(kept)
+assert.equal(typeof saved, "string")
+const loaded = Model.draftsFromJson(saved)
+assert.equal(Model.draftFor(loaded, "a"), "half a thou")
+assert.equal(Model.draftFor(loaded, "b"), "another")
+
+// A file that is missing, empty or not JSON gives no drafts rather than
+// stopping the panel from opening.
+assert.deepEqual(Object.keys(Model.draftsFromJson("")), [])
+assert.deepEqual(Object.keys(Model.draftsFromJson("{oops")), [])
+assert.deepEqual(Object.keys(Model.draftsFromJson(null)), [])
+// Anything that is not a string keyed by id is dropped on the way in.
+assert.deepEqual(Object.keys(Model.draftsFromJson('{"a": 3, "b": "ok"}')), ["b"])
+// An empty draft is not worth keeping.
+assert.equal(Model.draftsToJson({ a: "", b: "real" }), JSON.stringify({ b: "real" }))
+
+// Running out of pastéis is not a failure the panel should dress in red: the
+// allowance comes back tomorrow.
+assert.match(Model.errorLine({ kind: "exhausted", error: "none left" }), /tomorrow/i)
+assert.equal(Model.nextFailureCount(2, { kind: "exhausted" }), 2)
+
+// What the panel says after a pastel, which depends only on what is left.
+assert.equal(Model.pasteisLine(2), "Pastel given. 2 pastéis left today.")
+assert.equal(Model.pasteisLine(1), "Pastel given. 1 pastel left today.")
+assert.equal(Model.pasteisLine(0), "That was your last pastel for today.")
+assert.equal(Model.pasteisLine(-1), "Pastel given.")
+
 console.log("service: all checks passed")

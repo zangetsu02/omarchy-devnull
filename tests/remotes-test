@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""The private messages, against the mock. Run with: tests/remotes-test"""
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE.parent / "scripts" / "devnull"
+
+spec = importlib.util.spec_from_loader(
+    "mock_devnull", importlib.machinery.SourceFileLoader("mock_devnull", str(HERE / "mock-devnull"))
+)
+mock_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mock_module)
+
+
+def main():
+    tmp = tempfile.TemporaryDirectory()
+    home = Path(tmp.name)
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                    "-f", str(home / "id_ed25519")], check=True)
+    (home / "device.json").write_text('{"username": "zangetsu02"}')
+    state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
+    cache = tempfile.TemporaryDirectory()
+    environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home),
+                       XDG_CACHE_HOME=cache.name)
+
+    def run(*args):
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=environment)
+        return json.loads(result.stdout or "{}"), result.returncode
+
+    try:
+        # The inbox, with its three tabs and a search.
+        answer, code = run("remotes")
+        assert code == 0, answer
+        assert state.last_uri == "/api/v1/remotes", state.last_uri
+        assert [c["partner"]["username"] for c in answer["conversations"]] == ["ndk98z"]
+        run("remotes", "--tab", "stashed", "--q", "khan")
+        assert state.last_uri == "/api/v1/remotes?tab=stashed&q=khan", state.last_uri
+        answer, code = run("remotes", "--tab", "gossip")
+        assert code == 1 and "gossip" in answer["error"]
+
+        # One thread, and the cursors the web polls it with.
+        answer, code = run("thread", "ndk98z")
+        assert code == 0 and state.last_uri == "/api/v1/remotes/@ndk98z/messages"
+        assert answer["messages"][0]["body"] == "hey", answer
+        run("thread", "ndk98z", "--after", "12")
+        assert state.last_uri == "/api/v1/remotes/@ndk98z/messages?after=12"
+
+        # Sending carries a client_id, so a retry cannot send twice. One is
+        # made here when none is given.
+        answer, code = run("send", "ndk98z", "hello there")
+        assert code == 0, answer
+        sent = json.loads(state.last_body)
+        assert sent["body"] == "hello there"
+        assert re.fullmatch(r"[0-9a-f-]{36}", sent["client_id"]), sent
+        # The same client_id twice is the retry the server expects.
+        run("send", "ndk98z", "hello there", "--client-id", sent["client_id"])
+        assert json.loads(state.last_body)["client_id"] == sent["client_id"]
+        # A reply names the message it answers.
+        run("send", "ndk98z", "sure", "--reply-to", "7")
+        assert json.loads(state.last_body)["reply_to_id"] == 7
+
+        # Reading, typing, muting: all PUT, all on the partner.
+        for command, path in [("read", "read"), ("typing", "typing"), ("mute-remote", "mute")]:
+            run(command, "ndk98z")
+            assert state.last_method == "PUT"
+            assert state.last_uri == f"/api/v1/remotes/@ndk98z/{path}", state.last_uri
+
+        # Archive both ways, and the two answers to a request.
+        run("archive", "ndk98z");    assert state.last_method == "POST"
+        run("unarchive", "ndk98z");  assert state.last_method == "DELETE"
+        run("merge", "ndk98z")
+        assert state.last_uri == "/api/v1/remotes/@ndk98z/merge"
+        run("drop", "ndk98z")
+        assert state.last_uri == "/api/v1/remotes/@ndk98z/drop"
+
+        # Reactions, on one message.
+        run("react", "7", "heart")
+        assert state.last_uri == "/api/v1/remotes/messages/7/reactions"
+        assert json.loads(state.last_body) == {"reaction": "heart"}
+        run("unreact", "7", "heart")
+        assert state.last_method == "DELETE"
+        answer, code = run("reactions")
+        assert code == 0 and state.last_uri == "/api/v1/remotes/reactions"
+
+        # Who you could start talking to.
+        answer, code = run("candidates")
+        assert code == 0 and state.last_uri == "/api/v1/remotes/candidates"
+
+        # Orgs: a thread with more than two people in it.
+        run("org-thread", "42");  assert state.last_uri == "/api/v1/remotes/orgs/42/messages"
+        run("org-send", "42", "hi all")
+        assert state.last_method == "POST"
+        assert json.loads(state.last_body)["body"] == "hi all"
+        run("org-read", "42");    assert state.last_uri == "/api/v1/remotes/orgs/42/read"
+        run("org-new", "ndk98z", "pptx704")
+        assert state.last_uri == "/api/v1/remotes/orgs"
+        assert json.loads(state.last_body) == {"usernames": ["ndk98z", "pptx704"]}
+
+        # Whether anyone may message you, and from whom.
+        run("remotes-mode", "followers")
+        assert state.last_uri == "/api/v1/me/remotes"
+        assert json.loads(state.last_body) == {"remotes": "followers"}
+        answer, code = run("remotes-mode", "whoever")
+        assert code == 1 and "whoever" in answer["error"]
+
+        # An image attached to a message comes back as bytes, not JSON, so it
+        # is written to the cache and the panel is given the path.
+        answer, code = run("remote-image", "img1")
+        assert code == 0, answer
+        assert state.last_uri == "/api/v1/remotes/images/img1"
+        saved = Path(answer["path"])
+        assert saved.is_file() and saved.read_bytes() == b"\x89PNG fake", answer
+        # Asked for twice, it is not fetched twice.
+        before = len(state.calls)
+        answer2, code = run("remote-image", "img1")
+        assert code == 0 and answer2["path"] == answer["path"]
+        assert len(state.calls) == before, "it went back to the server"
+
+        print("remotes: all checks passed")
+    finally:
+        stop()
+        tmp.cleanup()
+        cache.cleanup()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

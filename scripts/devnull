@@ -7,10 +7,42 @@ Usage: devnull <command> [arguments]
   pair <code> <verifier> redeem an authorization code; writes device.json
   feed [--log L] [--cursor C]
                          a log (latest, following, trending), 20 commits and the cursor for the next
-  notifications          what happened to you — THIS MARKS THEM READ everywhere
+  notifications [--type replies,mentions,…]
+                         what happened to you — THIS MARKS THEM READ everywhere
   star <id>              star a commit
   unstar <id>            take the star back
   reply <id> <body>      reply to a commit; the answer says whether it is live
+  mute <user>            stop seeing someone, without telling them
+  unmute <user>          undo that
+  block <user>           block someone both ways
+  unblock <user>         undo that
+  report <id>            send a commit to the moderators
+  pastel <id>            give a commit one of your pastéis for today
+  pasteis-mode on|off    turn pastéis mode on or off
+  muted                  who you muted
+  blocked                who you blocked
+  delete <id>            take back one of your own commits
+  vote <id> <option>     vote in a commit's poll
+  preview <body>         how the site will render a body, before you send it
+  group <notification>   everyone behind one grouped notification
+  lane 0-5|#rrggbb|auto  your colour on the graph
+  sync-github            pull your name, bio and avatar from GitHub again
+  github-key             which of your public keys dev-null already knows
+  delete-account <user>  delete your account, naming it to mean it
+
+Private messages, which dev-null calls remotes:
+
+  remotes [--tab open|fetched|stashed] [--q text] [--before id]
+  thread <user> [--after n] [--before n] [--reactions-after n]
+  send <user> <body> [--reply-to n] [--client-id uuid]
+  read|typing|mute-remote|archive|unarchive|merge|drop <user>
+  react|unreact <message> <reaction>     reactions, and `reactions` lists them
+  candidates                             who you could start talking to
+  org-thread|org-read|org-typing|org-mute|org-archive|org-unarchive <org>
+  org-send <org> <body>                  write to a group
+  org-new <user> <user>...               start one
+  remotes-mode <who>                     who may write to you
+  remote-image <id>                      an image from a message, to a file
   replies <id> [--cursor C]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
@@ -40,6 +72,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -73,6 +106,8 @@ KINDS = {
     "invalid_signature": "expired",
     "commit_rules_required": "rules",
     "rate_limited": "limited",
+    # Nothing is broken: the day's allowance is simply spent.
+    "pasteis_exhausted": "exhausted",
 }
 
 
@@ -362,10 +397,27 @@ def cmd_unfollow(username):
     return {"username": username, "is_followed": False}
 
 
-def cmd_notifications():
-    """Listing marks every notification read, upstream, for the web and the app too.
-    Only call this when the panel is opened, never on a timer."""
-    answer = call("GET", "/api/v1/notifications")
+# The kinds upstream will filter by, from ListNotificationsRequest::TYPE_RULE.
+NOTIFICATION_TYPES = ("replies", "quotes", "stars", "mentions", "follows", "moderation")
+
+
+def cmd_notifications(*args):
+    """Listing marks every notification read, upstream, for the web and the app
+    too. Only call this when the panel is opened, never on a timer.
+
+    The server remembers a chosen filter in a cookie, which this does not send,
+    so the type goes on every request or it is forgotten."""
+    path = "/api/v1/notifications"
+    if len(args) == 2 and args[0] == "--type":
+        wanted = args[1]
+        if wanted not in ("all", "none"):
+            for kind in wanted.split(","):
+                if kind not in NOTIFICATION_TYPES:
+                    raise BridgeError(
+                        f"No notification kind called {kind!r}. "
+                        f"One or more of: {', '.join(NOTIFICATION_TYPES)}.", "http")
+        path += "?" + urllib.parse.urlencode({"type": wanted})
+    answer = call("GET", path)
     return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
 
 
@@ -394,6 +446,345 @@ def cmd_commit(body, *args):
     return answer.get("data", answer)
 
 
+def cmd_mute(username):
+    return call("POST", f"/api/v1/users/{username}/mute")
+
+
+def cmd_unmute(username):
+    return call("DELETE", f"/api/v1/users/{username}/mute")
+
+
+def cmd_block(username):
+    return call("POST", f"/api/v1/users/{username}/block")
+
+
+def cmd_unblock(username):
+    return call("DELETE", f"/api/v1/users/{username}/block")
+
+
+def cmd_report(commit_id):
+    """A commit that is gone answers the same as one you may not see, upstream,
+    so a report cannot be used to find out what exists."""
+    return call("POST", f"/api/v1/commits/{commit_id}/reports")
+
+
+def cmd_pastel(commit_id):
+    """One pastel out of the day's allowance. The answer carries how many are
+    left, so the panel can stop offering one that would be refused."""
+    answer = call("POST", f"/api/v1/commits/{commit_id}/pasteis")
+    commit = answer.get("data", {})
+    return {
+        "pasteis_count": commit.get("pasteis_count"),
+        "pasteis_remaining": answer.get("pasteis_remaining"),
+        "pasteis_resets_at": answer.get("pasteis_resets_at"),
+    }
+
+
+def cmd_pasteis_mode(state):
+    if state not in ("on", "off"):
+        raise BridgeError(f"Pastéis mode is on or off, not {state!r}.", "http")
+    return call("PUT", "/api/v1/me/pasteis-mode", {"enabled": state == "on"})
+
+
+def cmd_muted():
+    return {"users": call("GET", "/api/v1/me/muted").get("data", [])}
+
+
+def cmd_blocked():
+    return {"users": call("GET", "/api/v1/me/blocked").get("data", [])}
+
+
+def cmd_delete(commit_id):
+    """Yours to take back. The server answers with no content."""
+    return call("DELETE", f"/api/v1/commits/{commit_id}") or {"deleted": commit_id}
+
+
+def cmd_vote(commit_id, option):
+    """The option's id, not its position: a poll's options are uuids."""
+    return call("POST", f"/api/v1/commits/{commit_id}/poll/votes", {"option": option})
+
+
+def cmd_preview(body):
+    """Highlighting and resolving mentions happen on the server, so a composer
+    that wants to show either has to ask."""
+    return call("POST", "/api/v1/commits/preview", {"body": body})
+
+
+def cmd_group(notification_id):
+    return call("GET", f"/api/v1/notifications/{notification_id}/group")
+
+
+# The six lanes dev-null draws its graph in; `auto` gives the choice back.
+def cmd_lane(value):
+    if value == "auto":
+        return call("PUT", "/api/v1/me/lane", {"lane": None})
+    if re.fullmatch(r"#[0-9a-f]{6}", value):
+        return call("PUT", "/api/v1/me/lane", {"color": value})
+    if re.fullmatch(r"[0-5]", value):
+        return call("PUT", "/api/v1/me/lane", {"lane": int(value)})
+    raise BridgeError(f"A lane is 0 to 5, a #rrggbb colour, or auto, not {value!r}.", "http")
+
+
+def cmd_sync_github():
+    """Your name, bio and avatar, mirrored from GitHub again. Throttled to one
+    a minute upstream."""
+    return call("PUT", "/api/v1/me/github")
+
+
+def public_keys():
+    """Your public keys: the agent's first, then the ones in ~/.ssh. Public
+    keys are public; no private key is ever read or sent."""
+    keys = []
+    agent = subprocess.run(["ssh-add", "-L"], capture_output=True, text=True)
+    if agent.returncode == 0:
+        keys += [line for line in agent.stdout.splitlines() if line.startswith("ssh-")]
+    ssh_dir = Path(os.environ.get("DEVNULL_SSH_DIR", Path.home() / ".ssh"))
+    for path in sorted(ssh_dir.glob("*.pub")):
+        try:
+            line = path.read_text().strip()
+        except OSError:
+            continue
+        if line.startswith("ssh-") and line not in keys:
+            keys.append(line)
+    return keys
+
+
+def cmd_github_key():
+    """Asks dev-null which of your public keys it already knows, the way the
+    `/commit` script does before it signs. Unsigned, and the body is the keys
+    as plain text: this endpoint takes no JSON."""
+    keys = public_keys()
+    if not keys:
+        return {"known": False, "key": "", "offered": 0}
+
+    body = ("\n".join(keys) + "\n").encode()
+    request = urllib.request.Request(
+        BASE_URL + "/api/cli/key-lookups", data=body,
+        headers={"Content-Type": "text/plain", "User-Agent": USER_AGENT}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            found = response.read().decode(errors="replace").strip()
+    except urllib.error.HTTPError as error:
+        message = f"dev-null answered {error.code} for the key lookup."
+        raise BridgeError(message, classify(error.code, None, message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(getattr(error, "reason", error)), "network") from error
+
+    return {"known": found != "", "key": found, "offered": len(keys)}
+
+
+def cmd_delete_account(username):
+    """Deletes the account and every device with it, so this key stops working
+    at once. The username is typed again because nothing here can be undone."""
+    device = {}
+    try:
+        device = json.loads((HOME / "device.json").read_text())
+    except (OSError, ValueError):
+        pass
+    mine = device.get("username") or ""
+    if not mine or username != mine:
+        raise BridgeError(
+            f"Name the account to delete it. This machine is paired as "
+            f"{mine or 'nothing'!r}.", "http")
+    call("DELETE", "/api/v1/me")
+    return {"deleted": mine}
+
+
+# --- Private messages ---------------------------------------------------------
+#
+# dev-null calls them remotes. A conversation is named by the partner's handle,
+# a group by its id, and every message carries a client_id so a retry cannot
+# send the same thing twice.
+
+INBOX_TABS = ("open", "fetched", "stashed")
+# Who may start a conversation with you, as the web's setting offers it.
+REMOTE_MODES = ("everyone", "followers", "following", "mutuals", "nobody")
+
+
+def _flags(args, allowed):
+    """`--name value` pairs, checked against what the route takes."""
+    out = {}
+    rest = list(args)
+    while len(rest) >= 2 and rest[0].startswith("--"):
+        name = rest[0][2:].replace("-", "_")
+        if name not in allowed:
+            raise BridgeError(f"No option called --{rest[0][2:]} here.", "http")
+        out[name] = rest[1]
+        rest = rest[2:]
+    if rest:
+        raise BridgeError(f"Did not understand {' '.join(rest)!r}.", "http")
+    return out
+
+
+def _query(path, params):
+    kept = {k: v for k, v in params.items() if v not in (None, "")}
+    return path + ("?" + urllib.parse.urlencode(kept) if kept else "")
+
+
+def call_bytes(method, path):
+    """A signed request whose answer is not JSON: an image, as it is served."""
+    timestamp = str(int(time.time()))
+    nonce = new_nonce()
+    signature = sign(signed_message(timestamp, nonce, method, path, ""))
+    request = urllib.request.Request(BASE_URL + path, headers={
+        "X-Devnull-Timestamp": timestamp,
+        "X-Devnull-Nonce": nonce,
+        "X-SSH-Signature": header_signature(signature),
+        "User-Agent": USER_AGENT,
+    }, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        message = f"dev-null answered {error.code}."
+        raise BridgeError(message, classify(error.code, None, message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(getattr(error, "reason", error)), "network") from error
+
+
+def cmd_remotes(*args):
+    """The inbox: open conversations, fetched requests, or stashed ones."""
+    flags = _flags(args, {"tab", "q", "before"})
+    tab = flags.get("tab")
+    if tab is not None and tab not in INBOX_TABS:
+        raise BridgeError(f"No inbox tab called {tab!r}. One of: "
+                          f"{', '.join(INBOX_TABS)}.", "http")
+    answer = call("GET", _query("/api/v1/remotes", flags))
+    return {
+        "conversations": answer.get("data", []),
+        "unread_count": answer.get("unread_count"),
+        "fetched_count": answer.get("fetched_count"),
+    }
+
+
+def cmd_thread(username, *args):
+    """A conversation, newest page first. The cursors are the ones the web
+    polls with: after a message, before one, or reactions since a version."""
+    flags = _flags(args, {"after", "before", "reactions_after"})
+    answer = call("GET", _query(f"/api/v1/remotes/@{username}/messages", flags))
+    data = answer.get("data", answer)
+    return {
+        "messages": data.get("messages", []) if isinstance(data, dict) else data,
+        "can_write": (data or {}).get("can_send") if isinstance(data, dict) else None,
+        "reactions": (data or {}).get("reactions", []) if isinstance(data, dict) else [],
+    }
+
+
+def cmd_send(username, body, *args):
+    """A message. The client_id is what makes a retry safe: send the same one
+    again and the server answers with the message it already made."""
+    flags = _flags(args, {"reply_to", "client_id"})
+    payload = {"body": body, "client_id": flags.get("client_id") or str(uuid.uuid4())}
+    if flags.get("reply_to"):
+        payload["reply_to_id"] = int(flags["reply_to"])
+    return call("POST", f"/api/v1/remotes/@{username}/messages", payload)
+
+
+def _partner_put(leaf):
+    def run(username):
+        return call("PUT", f"/api/v1/remotes/@{username}/{leaf}") or {"ok": True}
+    return run
+
+
+def _partner_post(leaf):
+    def run(username):
+        return call("POST", f"/api/v1/remotes/@{username}/{leaf}") or {"ok": True}
+    return run
+
+
+def cmd_unarchive(username):
+    return call("DELETE", f"/api/v1/remotes/@{username}/archive") or {"ok": True}
+
+
+def cmd_react(message_id, reaction):
+    return call("POST", f"/api/v1/remotes/messages/{message_id}/reactions",
+                {"reaction": reaction}) or {"ok": True}
+
+
+def cmd_unreact(message_id, reaction):
+    return call("DELETE", f"/api/v1/remotes/messages/{message_id}/reactions",
+                {"reaction": reaction}) or {"ok": True}
+
+
+def cmd_reactions():
+    return {"reactions": call("GET", "/api/v1/remotes/reactions").get("data", [])}
+
+
+def cmd_candidates():
+    return {"users": call("GET", "/api/v1/remotes/candidates").get("data", [])}
+
+
+def cmd_message_link_preview(message_id):
+    return call("GET", f"/api/v1/remotes/messages/{message_id}/link-preview")
+
+
+def cmd_org_thread(org, *args):
+    flags = _flags(args, {"after", "before", "reactions_after"})
+    answer = call("GET", _query(f"/api/v1/remotes/orgs/{org}/messages", flags))
+    data = answer.get("data", answer)
+    return {"messages": data.get("messages", []) if isinstance(data, dict) else data}
+
+
+def cmd_org_send(org, body, *args):
+    flags = _flags(args, {"reply_to", "client_id"})
+    payload = {"body": body, "client_id": flags.get("client_id") or str(uuid.uuid4())}
+    if flags.get("reply_to"):
+        payload["reply_to_id"] = int(flags["reply_to"])
+    return call("POST", f"/api/v1/remotes/orgs/{org}/messages", payload)
+
+
+def _org_put(leaf):
+    def run(org):
+        return call("PUT", f"/api/v1/remotes/orgs/{org}/{leaf}") or {"ok": True}
+    return run
+
+
+def cmd_org_new(*usernames):
+    if not usernames:
+        raise BridgeError("Name at least one person to start a group with.", "http")
+    return call("POST", "/api/v1/remotes/orgs", {"usernames": list(usernames)})
+
+
+def cmd_org_archive(org):
+    return call("POST", f"/api/v1/remotes/orgs/{org}/archive") or {"ok": True}
+
+
+def cmd_org_unarchive(org):
+    return call("DELETE", f"/api/v1/remotes/orgs/{org}/archive") or {"ok": True}
+
+
+def cmd_remote_image(image_id):
+    """An image attached to a message. The route answers with bytes behind a
+    signature, which a QML Image cannot produce, so it is written to the cache
+    once and the panel is handed the path."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "", str(image_id))
+    if not safe:
+        raise BridgeError("That is not an image id.", "http")
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy-devnull"
+    cache.mkdir(parents=True, exist_ok=True)
+    saved = cache / safe
+    if saved.exists() and saved.stat().st_size > 0:
+        return {"path": str(saved), "cached": True}
+
+    blob = call_bytes("GET", f"/api/v1/remotes/images/{safe}")
+    saved.write_bytes(blob)
+    return {"path": str(saved), "cached": False}
+
+
+def cmd_remotes_mode(who):
+    if who not in REMOTE_MODES:
+        raise BridgeError(f"No such setting: {who!r}. One of: "
+                          f"{', '.join(REMOTE_MODES)}.", "http")
+    return call("PUT", "/api/v1/me/remotes", {"remotes": who})
+
+
+def cmd_remote_preferences(*args):
+    """The rest of the private-message settings, passed through as given."""
+    flags = _flags(args, {"sounds", "previews", "read_receipts", "typing"})
+    payload = {k: v == "on" for k, v in flags.items()}
+    return call("PUT", "/api/v1/me/remote-preferences", payload)
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -417,7 +808,30 @@ COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
             "user-commits": per_user("/api/v1/users/{username}/commits"),
             "followers": per_user("/api/v1/users/{username}/followers"),
-            "following": per_user("/api/v1/users/{username}/following")}
+            "following": per_user("/api/v1/users/{username}/following"),
+            "mute": cmd_mute, "unmute": cmd_unmute,
+            "block": cmd_block, "unblock": cmd_unblock,
+            "report": cmd_report, "pastel": cmd_pastel,
+            "pasteis-mode": cmd_pasteis_mode,
+            "muted": cmd_muted, "blocked": cmd_blocked,
+            "delete": cmd_delete, "vote": cmd_vote, "preview": cmd_preview,
+            "group": cmd_group, "lane": cmd_lane, "sync-github": cmd_sync_github,
+            "github-key": cmd_github_key, "delete-account": cmd_delete_account,
+            "remotes": cmd_remotes, "thread": cmd_thread, "send": cmd_send,
+            "read": _partner_put("read"), "typing": _partner_put("typing"),
+            "mute-remote": _partner_put("mute"),
+            "archive": _partner_post("archive"), "unarchive": cmd_unarchive,
+            "merge": _partner_post("merge"), "drop": _partner_post("drop"),
+            "react": cmd_react, "unreact": cmd_unreact, "reactions": cmd_reactions,
+            "candidates": cmd_candidates,
+            "message-link-preview": cmd_message_link_preview,
+            "org-thread": cmd_org_thread, "org-send": cmd_org_send,
+            "org-read": _org_put("read"), "org-typing": _org_put("typing"),
+            "org-mute": _org_put("mute"), "org-new": cmd_org_new,
+            "org-archive": cmd_org_archive, "org-unarchive": cmd_org_unarchive,
+            "remotes-mode": cmd_remotes_mode,
+            "remote-preferences": cmd_remote_preferences,
+            "remote-image": cmd_remote_image}
 
 
 def main():

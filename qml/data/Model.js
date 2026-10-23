@@ -25,7 +25,8 @@ var VERBS = {
 var ICONS = {
     star: "\u{f04ce}", unstarred: "\u{f04d2}", reply: "\u{f045a}", quote: "\u{f10d}",
     copy: "\u{f018f}", expand: "\u{f0142}", collapse: "\u{f0140}",
-    follow: "\u{f0415}", following: "\u{f012c}"
+    follow: "\u{f0415}", following: "\u{f012c}",
+    mute: "\u{f075f}", block: "\u{f0159}", pastel: "\u{f0e0e}"
 }
 
 // --- Small immutable helpers ----------------------------------------------------
@@ -74,6 +75,7 @@ function rowFor(commit) {
         stars: commit.stars_count || 0,
         starred: commit.starred === true,
         replies: commit.replies_count || 0,
+        pasteis: commit.pasteis_count || 0,
         pending: commit.status === "pending",
         url: commit.html_url || "",
         created: commit.created_at || "",
@@ -206,6 +208,28 @@ function withDraft(drafts, id, text) {
     return merged(drafts, change)
 }
 
+// Drafts outlive the shell. What goes to disk is only what someone typed and
+// has not sent: ids mapped to text, nothing else, and nothing empty.
+function draftsToJson(drafts) {
+    var out = {}
+    for (var id in (drafts || {})) {
+        var text = drafts[id]
+        if (typeof text === "string" && text !== "") out[id] = text
+    }
+    return JSON.stringify(out)
+}
+
+function draftsFromJson(text) {
+    var parsed = {}
+    try { parsed = JSON.parse(text || "{}") || {} } catch (e) { return {} }
+    if (typeof parsed !== "object" || parsed === null) return {}
+    var out = {}
+    // The file is ours, but it is still a file: anything that is not text
+    // keyed by an id is dropped rather than handed to a view.
+    for (var id in parsed) if (typeof parsed[id] === "string") out[id] = parsed[id]
+    return out
+}
+
 function clearDraft(drafts, id) {
     return without(drafts, id)
 }
@@ -235,6 +259,8 @@ function errorLine(result) {
         return "This machine is not paired any more. Run scripts/setup-devnull."
     case "rules":
         return "Accept the commit rules on dev-null.sh once, then try again."
+    case "exhausted":
+        return "That was your last pastel for today. More tomorrow."
     case "limited":
         return "Too many requests for now. It will catch up by itself."
     case "network":
@@ -242,6 +268,24 @@ function errorLine(result) {
     default:
         return result.error || "Something went wrong."
     }
+}
+
+// What the panel says after giving a pastel. The count is the whole message:
+// nobody needs to be told what they just did, only what is left.
+// Whether a list of accounts holds this handle, so a button can offer to lift
+// what it set. dev-null compares handles without case, so this does too.
+function silences(users, username) {
+    if (!username) return false
+    var wanted = String(username).toLowerCase()
+    for (var i = 0; i < (users || []).length; i++)
+        if (String((users[i] || {}).username || "").toLowerCase() === wanted) return true
+    return false
+}
+
+function pasteisLine(left) {
+    if (left < 0) return "Pastel given."
+    if (left === 0) return "That was your last pastel for today."
+    return "Pastel given. " + plural(left, "pastel", "pastéis") + " left today."
 }
 
 function withStar(commit, starred) {
@@ -470,7 +514,7 @@ var GLYPHS = {
     bar: "│", dottedBar: "┆", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
     topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
     star: "\u{f04ce}", unstarred: "\u{f04d2}", replies: "\u{f045a}",
-    ellipsis: "…"
+    cursorBar: "▌", ellipsis: "…"
 }
 
 // One marker, not two. Filled is the cursor, the way LazyVim keeps `cursorline`
@@ -543,4 +587,109 @@ function frameLine(kind, width, title) {
         + label
         + new Array(Math.max(0, dashes - lead) + 1).join(GLYPHS.dash)
         + corners[1]
+}
+
+// --- Going somewhere by typing it --------------------------------------------
+//
+// dev-null's search is a web route behind a session cookie, and a client that
+// signs its requests with a device key does not have one. What it can do
+// without a server is resolve what someone typed.
+
+var SITE = "dev-null.sh"
+
+function destinationFor(text) {
+    var typed = String(text || "").trim().replace(/\/+$/, "")
+    if (typed === "") return null
+
+    var link = typed.match(/^https?:\/\/([^/]+)\/@([A-Za-z0-9_-]+)(?:\/commits\/([A-Za-z0-9]+))?$/)
+    if (link) {
+        if (link[1] !== SITE) return null
+        return link[3] ? { page: "commit", argument: link[3] }
+                       : { page: "profile", argument: link[2] }
+    }
+    if (typed.indexOf("://") >= 0) return null
+
+    if (typed.charAt(0) === "@")
+        return { page: "profile", argument: typed.slice(1) }
+    // Seven hex characters is a short hash; anything else that looks like a
+    // handle is one.
+    if (/^[0-9a-f]{7}$/.test(typed)) return { page: "commit", argument: typed }
+    if (/^[A-Za-z0-9_-]+$/.test(typed)) return { page: "profile", argument: typed }
+    return null
+}
+
+// --- Completing an @mention --------------------------------------------------
+//
+// From the handles already on screen, because there is no suggestion endpoint
+// on the signed API either.
+
+function _mentionWord(text) {
+    var typed = String(text || "")
+    var word = typed.slice(typed.lastIndexOf(" ") + 1)
+    return word.charAt(0) === "@" ? word.slice(1) : null
+}
+
+function mentionsFor(text, handles) {
+    var prefix = _mentionWord(text)
+    if (prefix === null) return []
+    var wanted = prefix.toLowerCase()
+    var out = []
+    for (var i = 0; i < (handles || []).length; i++) {
+        var handle = handles[i]
+        if (String(handle).toLowerCase().indexOf(wanted) === 0) out.push(handle)
+    }
+    return out
+}
+
+function completeMention(text, handle) {
+    if (_mentionWord(text) === null) return text
+    var typed = String(text)
+    return typed.slice(0, typed.lastIndexOf("@")) + "@" + handle + " "
+}
+
+// --- Private messages --------------------------------------------------------
+//
+// dev-null calls them remotes. A conversation is one row in the inbox; a
+// message is one line in a thread, on your side or theirs.
+
+var INBOX_TABS = ["open", "fetched", "stashed"]
+
+function remoteFor(conversation, myUsername) {
+    if (!conversation) return null
+    var partner = conversation.partner || {}
+    var last = conversation.last_message || {}
+    var author = last.author || {}
+    return {
+        id: conversation.id,
+        username: partner.username || "",
+        handle: "@" + (partner.username || "?"),
+        name: partner.name || partner.username || "?",
+        avatar: partner.avatar_url || "",
+        lane: laneOf({ author: partner }),
+        preview: last.body || "",
+        when: last.created_at || "",
+        // Whether the last word was yours, which an inbox marks. Asked of your
+        // own handle, not inferred from the partner's: a group has more than
+        // two people in it.
+        mine: !!author.username && author.username === myUsername,
+        unread: conversation.unread_count || 0
+    }
+}
+
+function messageFor(message, myUsername) {
+    if (!message) return null
+    var author = message.author || {}
+    return {
+        id: message.id,
+        body: message.body || "",
+        handle: "@" + (author.username || "?"),
+        name: author.name || author.username || "?",
+        avatar: author.avatar_url || "",
+        lane: laneOf({ author: author }),
+        when: message.created_at || "",
+        mine: !!author.username && author.username === myUsername,
+        replyTo: message.reply_to_id || null,
+        reactions: message.reactions || [],
+        images: message.images || []
+    }
 }

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import "data"
 import "views"
@@ -52,7 +53,22 @@ Item {
   property var history: []
   property string replyingTo: ""
   // Per commit id, not per row: the feed is replaced on every refresh.
+  // Kept on disk: a commit half written when the shell reloads is still there
+  // afterwards. Only text nobody has sent yet goes in, and a file that is
+  // missing or unreadable means no drafts, never a panel that will not open.
   property var drafts: ({})
+  readonly property string draftsPath: Quickshell.env("HOME") + "/.cache/omarchy/devnull-drafts.json"
+
+  FileView {
+    id: draftsFile
+    path: root.draftsPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.drafts = Model.draftsFromJson(text())
+  }
+
+  function saveDrafts() { draftsFile.setText(Model.draftsToJson(root.drafts)) }
   property string composerText: ""
   property var quoting: null
   property string status: ""
@@ -80,7 +96,7 @@ Item {
     panelOpen: root.opened
     onReplyDone: function (id, answer) {
       if (Model.keepsDraft(answer)) return
-      root.drafts = Model.clearDraft(root.drafts, id)
+      root.drafts = Model.clearDraft(root.drafts, id); root.saveDrafts()
       if (root.replyingTo === id) root.replyingTo = ""
     }
     onTold: function (text, failed) { root.say(text, failed) }
@@ -93,6 +109,12 @@ Item {
 
   Pager { id: starred; service: feed }
 
+  Remotes {
+    id: remotes
+    service: feed
+    myUsername: root.myUsername
+  }
+
   // --- What rows and pages call ---------------------------------------------------
 
   function threadFor(id) { return feed.threads[id] || null }
@@ -100,7 +122,7 @@ Item {
   function toggleThread(id) { feed.toggleThread(id) }
   function loadMoreReplies(id, cursor) { feed.loadThread(id, cursor) }
   function draftFor(id) { return Model.draftFor(drafts, id) }
-  function keepDraft(id, text) { drafts = Model.withDraft(drafts, id, text) }
+  function keepDraft(id, text) { drafts = Model.withDraft(drafts, id, text); saveDrafts() }
   // The draft is cleared only once the reply lands: if the server refuses it,
   // what was typed is the only copy.
   function sendReply(id, text) { if (text.trim() !== "") feed.sendReply(id, text) }
@@ -130,6 +152,33 @@ Item {
     Quickshell.execDetached(["wl-copy", row.url])
     say("Copied link to " + row.hash, false)
   }
+  // A profile's link, for sharing it the way a commit's is shared.
+  readonly property int pasteisLeft: feed.pasteisLeft
+  function givePastel(id) { feed.pastel(id) }
+
+  function copyProfileLink(username, url) {
+    Quickshell.execDetached(["wl-copy", url || ("https://dev-null.sh/@" + username)])
+    say("Copied link to @" + username, false)
+  }
+
+  // Everyone the loaded feed knows about, for completing an @mention. The
+  // signed API has no suggestion endpoint, so what is on screen is the list.
+  function handlesOnScreen() {
+    var seen = {}
+    var commits = feed.commits || []
+    for (var i = 0; i < commits.length; i++) {
+      var author = commits[i].author || {}
+      if (author.username) seen[author.username] = true
+      var preview = (commits[i].reply_preview || {}).data || []
+      for (var j = 0; j < preview.length; j++) {
+        var inner = preview[j].author || {}
+        if (inner.username) seen[inner.username] = true
+      }
+    }
+    if (root.myUsername) seen[root.myUsername] = true
+    return Object.keys(seen).sort()
+  }
+
   function openProfile(username) { if (username) goTo("profile", username) }
   function openCommit(id) { if (id) goTo("commit", id) }
 
@@ -161,6 +210,9 @@ Item {
     if (name === "profile") profileName = argument || myUsername
     if (name === "commit") commitId = argument
     if (name === "starred") starred.args = ["starred"]
+    // The inbox is only worth fetching when it is on screen, and it is the
+    // one page that marks things read by being opened.
+    if (name === "remotes") remotes.refresh()
     replyingTo = ""
     scope.forceActiveFocus()
   }
@@ -230,7 +282,8 @@ Item {
     "l": function () { root.goTo("log", "") },
     "n": function () { root.goTo("notifications", "") },
     "s": function () { root.goTo("starred", "") },
-    "p": function () { root.goTo("profile", root.myUsername) }
+    "p": function () { root.goTo("profile", root.myUsername) },
+    "r": function () { root.goTo("remotes", "") }
   })
 
   function connect() {
@@ -268,6 +321,16 @@ Item {
     case "reply": if (commit) root.toggleReply(commit.id); break
     case "open": if (commit) root.openOnSite(commit.html_url); break
     case "copy": if (commit) root.copyLink(Model.rowFor(commit)); break
+    case "go": {
+      var where = Model.destinationFor(parsed.arg)
+      if (!where) { root.say("E492: nowhere called " + parsed.arg, true); return }
+      root.goTo(where.page, where.argument)
+      break
+    }
+    case "mute": if (commit) feed.mute(Model.rowFor(commit).username); break
+    case "block": if (commit) feed.block(Model.rowFor(commit).username); break
+    case "report": if (commit) feed.report(commit.id); break
+    case "pastel": if (commit) feed.pastel(commit.id); break
     case "connect": root.connect(); break
     case "quit": root.dismiss(); break
     default: root.say("E492: not an editor command: " + parsed.name, true); return
@@ -347,6 +410,7 @@ Item {
         NavItem { icon: ""; label: "Log"; keys: "g l"; target: "log" }
         NavItem { icon: ""; label: "Notifications"; keys: "g n"; target: "notifications"; count: root.unread }
         NavItem { icon: ""; label: "Starred"; keys: "g s"; target: "starred" }
+        NavItem { icon: "󰭹"; label: "Remotes"; keys: "g r"; target: "remotes"; count: remotes.unread }
         NavItem { icon: ""; label: "Profile"; keys: "g p"; target: "profile" }
       }
 
@@ -448,6 +512,15 @@ Item {
           }
         }
 
+        // --- Remotes -------------------------------------------------------------
+
+        RemotesPage {
+          anchors.fill: parent
+          visible: root.page === "remotes"
+          view: root
+          remotes: remotes      // the Remotes above, by id
+        }
+
         // --- Starred -------------------------------------------------------------
 
         CommitList {
@@ -544,16 +617,27 @@ Item {
         Mono { topPadding: Style.space(4); text: "Keys"; font.pixelSize: Style.font.body; font.bold: true }
         Repeater {
           model: [
-            ["j k", "move"], ["1 2 3", "following · latest · trending"], ["o", "replies"],
+            ["j k", "move"], ["1 2 3", "the three logs"], ["o", "replies"],
             ["s", "star"], ["r", "reply"], ["q", "quote"], ["c", "new commit"], ["p", "author's profile"],
-            ["y", "copy link"], ["enter", "the commit"], ["O", "open on the site"], ["g l n s p", "log · notif. · starred · you"],
+            ["y", "copy link"], ["enter", "the commit"], ["O", "open on the site"],
+            ["g l n r s p", "the six pages"], [":", "the command line"],
             ["⌫", "back"], ["R", "refresh"], ["esc", "close"]
           ]
-          Row {
+          // The cap keeps its width and the description takes what is left,
+          // elided: a label longer than the column used to run off the edge.
+          Item {
             required property var modelData
-            spacing: Style.space(8)
-            KeyCap { text: modelData[0] }
-            Mono { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: Color.muted }
+            width: aside.width - aside.padding * 2
+            height: cap.height
+            KeyCap { id: cap; text: modelData[0] }
+            Mono {
+              x: cap.width + Style.space(8)
+              width: parent.width - x
+              anchors.verticalCenter: cap.verticalCenter
+              elide: Text.ElideRight
+              color: Color.muted
+              text: modelData[1]
+            }
           }
         }
       }

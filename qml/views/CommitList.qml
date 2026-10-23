@@ -42,6 +42,7 @@ ListView {
     commit: modelData
     view: root.view
     selected: index === root.selectedIndex
+    last: index === root.commits.length - 1
     // Click moves the cursor, as in a terminal; double click is what `enter` is.
     // A click on the body selects text instead: TextEdit takes the grab there.
     TapHandler {

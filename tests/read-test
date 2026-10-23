@@ -116,6 +116,18 @@ def main():
         answer, code = run("me")
         assert code == 1 and answer["kind"] == "auth" and answer["error"] == "Not approved."
 
+        # Notifications can be narrowed to the kinds upstream knows. The server
+        # remembers the choice in a cookie we do not send, so it goes on every
+        # request or it is forgotten.
+        run("notifications", "--type", "replies,mentions")
+        assert state.last_uri == "/api/v1/notifications?type=replies%2Cmentions", state.last_uri
+        run("notifications")
+        assert state.last_uri == "/api/v1/notifications", state.last_uri
+        # A kind the server does not know is refused here rather than silently
+        # becoming "all", which is what upstream would do with it.
+        answer, code = run("notifications", "--type", "gossip")
+        assert code == 1 and "gossip" in answer["error"], answer
+
         # The public feed: no key, no signature, the same shape as the API one.
         public, code = run_in(tempfile.gettempdir() + "/devnull-nokey", "feed", "--public")
         assert code == 0, public
@@ -156,6 +168,29 @@ def main():
         answer, code = run_in(half.name, "me")
         assert code == 1 and answer["kind"] == "auth", answer
         half.cleanup()
+
+        # A machine with a public key to offer. The real one looks in ~/.ssh.
+        ssh_dir = tempfile.TemporaryDirectory()
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "gh",
+                        "-f", str(Path(ssh_dir.name) / "id_ed25519")], check=True)
+        environment["DEVNULL_SSH_DIR"] = ssh_dir.name
+
+        # Which of your GitHub keys dev-null already knows. Unsigned, and the
+        # body is the keys as plain text, one per line, not JSON.
+        answer, code = run("github-key")
+        assert code == 0, answer
+        assert state.last_uri == "/api/cli/key-lookups"
+        assert answer["key"].startswith("ssh-ed25519 "), answer
+        assert answer["known"] is True
+
+        # No key of yours is known: that is an answer, not a failure.
+        state.knows_a_key = False
+        answer, code = run("github-key")
+        assert code == 0 and answer["known"] is False, answer
+
+        state.knows_a_key = True
+        ssh_dir.cleanup()
+        environment.pop("DEVNULL_SSH_DIR", None)
 
         # Never paired is its own kind: the panel must not call it an error nor
         # count it toward "re-pair me". A missing key is not a refused device.
