@@ -1,43 +1,56 @@
 import QtQuick
+import qs.Commons
 import "../data/Model.js" as Model
 
-// The graph rail, drawn as a terminal draws it: one glyph per line of text,
-// the head marking this row and the tail carrying the lane down to the next.
+// The graph rail, drawn as a terminal draws it: a head glyph marking this row
+// and a lane carrying it down to the next.
 //
-// It replaces the rectangles the rail used to be, and it is one component
-// rather than three copies, so the log, the notifications and the bar popup
-// cannot drift apart.
-Column {
+// The lane is ONE text holding every line, not one text per line. A column of
+// separate items leaves air between the boxes and `│` comes out dotted; inside
+// a single text Qt lays the lines out at the font's own spacing and the glyphs
+// touch, which is the whole reason a box-drawing bar exists.
+Item {
   id: root
 
-  // The grid this rail steps on.
   required property var metrics
-  // How tall the row is. Worked out from where the rail sits, so no caller has
-  // to get it right: one of the three used to stop eight pixels short.
   property real rowHeight: parent ? parent.height - y : 0
-  // The first glyph: the node, or the branch a reply hangs from.
   property string head: Model.GLYPHS.node
-  // What the lane is drawn with below the head. The staged commit dots it.
   property string tail: Model.rail("body", {})
-  property color headColor: "white"
-  property color tailColor: "grey"
-  // How many columns the rail occupies. A branch needs more than a bar.
+  property color headColor: Color.foreground
+  property color tailColor: Color.muted
   property int cells: 2
 
-  spacing: 0
+  readonly property int lines: metrics.lineH > 0
+    ? Math.max(1, Math.ceil(rowHeight / metrics.lineH))
+    : 1
 
-  Repeater {
-    model: root.metrics.lineH > 0
-      ? Math.max(1, Math.ceil(root.rowHeight / root.metrics.lineH))
-      : 1
-    Mono {
-      required property int index
-      width: root.metrics.cell * root.cells
-      height: root.metrics.lineH
-      font.pixelSize: root.metrics.size
-      verticalAlignment: Text.AlignVCenter
-      color: index === 0 ? root.headColor : root.tailColor
-      text: index === 0 ? root.head : root.tail
+  width: metrics.cell * cells
+  height: rowHeight
+
+  Mono {
+    id: lane
+    width: parent.width
+    y: headGlyph.height
+    color: root.tailColor
+    font.pixelSize: root.metrics.size
+    lineHeight: 1.0
+    lineHeightMode: Text.ProportionalHeight
+    textFormat: Text.PlainText
+    text: {
+      var out = []
+      for (var i = 1; i < root.lines; i++) out.push(root.tail)
+      return out.join("\n")
     }
+  }
+
+  Mono {
+    id: headGlyph
+    width: parent.width
+    height: root.metrics.lineH
+    verticalAlignment: Text.AlignVCenter
+    color: root.headColor
+    font.pixelSize: root.metrics.size
+    textFormat: Text.PlainText
+    text: root.head
   }
 }
