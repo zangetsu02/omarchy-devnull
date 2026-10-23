@@ -17,6 +17,8 @@ Column {
   property real rowHeight: parent ? parent.height - y : 0
   // The first glyph: the node, or the branch a reply hangs from.
   property string head: Model.GLYPHS.node
+  // What the lane is drawn with below the head. The staged commit dots it.
+  property string tail: Model.rail("body", {})
   property color headColor: "white"
   property color tailColor: "grey"
   // How many columns the rail occupies. A branch needs more than a bar.
@@ -35,7 +37,7 @@ Column {
       font.pixelSize: root.metrics.size
       verticalAlignment: Text.AlignVCenter
       color: index === 0 ? root.headColor : root.tailColor
-      text: index === 0 ? root.head : Model.rail("body", {})
+      text: index === 0 ? root.head : root.tail
     }
   }
 }

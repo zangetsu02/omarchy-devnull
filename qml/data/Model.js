@@ -467,7 +467,7 @@ function activitySummary(activity) {
 // why the counters are Nerd Font private-use points and not ★ ☆ ⤷.
 var GLYPHS = {
     node: "○", nodeHere: "●", nodeGone: "◌",
-    bar: "│", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
+    bar: "│", dottedBar: "┆", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
     topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
     star: "\u{f04ce}", unstarred: "\u{f04d2}", replies: "\u{f045a}",
     ellipsis: "…"
@@ -484,6 +484,8 @@ function rail(kind, opts) {
     var o = opts || {}
     switch (kind) {
     case "body": return GLYPHS.bar
+    // The staged commit's lane is dotted until there is something to commit.
+    case "staged": return o.ready ? GLYPHS.bar : GLYPHS.dottedBar
     case "reply": return (o.last ? GLYPHS.lastBranch : GLYPHS.branch) + GLYPHS.dash + GLYPHS.arm
     default: return " "
     }

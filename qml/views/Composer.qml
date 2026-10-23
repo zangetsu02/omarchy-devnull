@@ -16,48 +16,41 @@ Item {
   readonly property color lane: view.laneColor(me.lane || 0)
   readonly property int remaining: Model.charsLeft(view.composerText)
   readonly property bool ready: view.composerText.trim() !== "" && remaining >= 0
-  readonly property real railWidth: Style.space(34)
   readonly property real pad: Style.space(14)
 
   width: ListView.view ? ListView.view.width : 0
-  height: column.implicitHeight + pad * 2
+  // Hidden, it takes no room: a list header keeps its height otherwise, and a
+  // height set from outside cannot know this formula.
+  height: visible ? column.implicitHeight + pad * 2 : 0
 
-  // The rail starts here, dashed until the commit is staged.
-  Repeater {
-    model: Math.ceil((root.height - node.y - node.height) / Style.space(8))
-    Rectangle {
-      required property int index
-      x: root.railWidth / 2 - 1
-      y: node.y + node.height + index * Style.space(8) + Style.space(2)
-      width: 2
-      height: Style.space(4)
-      color: root.view.railColor
-    }
-  }
-  Rectangle {
-    id: node
-    x: root.railWidth / 2 - width / 2
-    y: root.pad + Style.space(11)
-    width: Style.space(12)
-    height: width
-    radius: width / 2
-    color: root.ready ? root.lane : Color.background
-    border.width: 2
-    border.color: root.lane
+  Metrics { id: grid }
+
+  // The same character rail the commits below use, dotted until there is
+  // something to commit. It was a column of little rectangles, which is the
+  // one place the drawn graph outlived the grid.
+  Rail {
+    x: 0
+    y: root.pad
+    metrics: grid
+    cells: 2
+    headColor: root.lane
+    tailColor: root.view.railColor
+    head: root.ready ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
+    tail: Model.rail("staged", { ready: root.ready })
   }
 
   Avatar {
     id: avatar
-    x: root.railWidth + Style.space(4)
+    x: grid.cell * 2
     y: root.pad
-    size: Style.space(34)
+    size: grid.cell * 2
     source: root.me.avatar_url || ""
     name: root.me.name || ""
   }
 
   Column {
     id: column
-    x: avatar.x + avatar.width + Style.space(10)
+    x: grid.cell * 5
     y: root.pad
     width: root.width - x - Style.space(14)
     spacing: Style.space(8)
@@ -139,7 +132,7 @@ Item {
 
   Rectangle {
     anchors.bottom: parent.bottom
-    x: root.railWidth
+    x: grid.cell * 5
     width: root.width - x
     height: 1
     color: root.view.railColor

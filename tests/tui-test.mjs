@@ -25,6 +25,10 @@ assert.equal(Model.nodeGlyph({ deleted_at: "2026-10-21T00:00:00Z" }, true), G.no
 
 // The rail under a commit, per kind of line.
 assert.equal(Model.rail("body", {}), G.bar)
+// The staged commit's own rail is dotted until there is something to commit,
+// the way the drawn one was before the grid took over.
+assert.equal(Model.rail("staged", { ready: false }), G.dottedBar)
+assert.equal(Model.rail("staged", { ready: true }), G.bar)
 assert.equal(Model.rail("reply", { last: false }), G.branch + G.dash + G.arm)
 assert.equal(Model.rail("reply", { last: true }), G.lastBranch + G.dash + G.arm)
 // An unknown kind draws nothing rather than breaking the grid.

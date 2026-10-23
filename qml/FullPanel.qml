@@ -419,7 +419,6 @@ Item {
               // Nothing to compose with until this machine is connected, and an
               // empty avatar over an empty box is a worse invitation than none.
               visible: !feed.signedOut
-              height: visible ? implicitHeight : 0
               Component.onCompleted: root.composerField = field
             }
           }
