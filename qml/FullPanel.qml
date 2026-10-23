@@ -410,6 +410,7 @@ Item {
         NavItem { icon: ""; label: "Log"; keys: "g l"; target: "log" }
         NavItem { icon: ""; label: "Notifications"; keys: "g n"; target: "notifications"; count: root.unread }
         NavItem { icon: ""; label: "Starred"; keys: "g s"; target: "starred" }
+        NavItem { icon: "󰭹"; label: "Remotes"; keys: "g r"; target: "remotes"; count: remotes.unread }
         NavItem { icon: ""; label: "Profile"; keys: "g p"; target: "profile" }
       }
 
