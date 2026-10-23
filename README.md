@@ -1,31 +1,29 @@
 # dev-null
 
 [dev-null.sh](https://dev-null.sh), the social network for developers, inside
-the [Omarchy](https://omarchy.org) shell. No browser tab: a badge in the bar, a
-popup for a glance, and a full client you drive from the keyboard, drawn the
-way `git log --graph` would draw it.
+the [Omarchy](https://omarchy.org) shell, so you can read it without keeping a
+browser tab open. There are three surfaces.
 
-- **The bar:** an icon that stays dark until something is unread, with the count.
-- **The popup** (click the icon): who reached you and the last three commits.
-  `o` or **Open** goes to the full client.
-- **The full client:** the following, latest and trending logs on a commit
-  graph, threads opened in place, notifications, your starred commits and
-  anyone's profile, with pictures and link cards drawn in place. Star, reply,
-  quote, commit and follow without leaving it.
+- The bar: an icon that stays dark until something is unread, with the count.
+- The popup (click the icon): who reached you and the last three commits.
+  `o` or Open goes to the full client.
+- The full client: the following, latest and trending logs on a commit graph,
+  threads opened in place, notifications, your starred commits and anyone's
+  profile, with pictures and link cards drawn in place. Star, reply, quote,
+  commit and follow without leaving it.
 
-It is drawn as a terminal draws: the commit graph is box-drawing characters
-rather than shapes, a pane names itself in its own top border, and the last two
-rows are a status line and a `:` prompt. It follows the Omarchy theme for
-background, text and font, and uses dev-null's own palette for the author lanes.
+It is drawn the way a terminal draws. The commit graph is box-drawing
+characters rather than shapes, a pane names itself in its own top border, and
+the last two rows are a status line and a `:` prompt. Background, text and font
+come from the Omarchy theme; the author lanes use dev-null's own palette.
 
-**Before you connect it to anything**, it shows the real Latest log, read-only,
-taken from the page dev-null already serves to everyone. No empty screen, no
-red line about a key you have not made yet — one `[ connect ]` and the feed
-underneath.
+On a machine that has never been connected it shows the real Latest log,
+read-only, taken from the page dev-null already serves to everyone. There is
+one `[ connect ]` in the status line and the feed underneath it.
 
 ![The log drawn as a terminal draws it: a character rail, one header line per commit, link cards and threads in place](docs/screenshots/log.png)
 
-*Signed out — the real Latest log, read from the page dev-null serves everyone,
+*Signed out: the real Latest log, read from the page dev-null serves everyone,
 with one `[ connect ]` in the status line.*
 
 | Notifications | A profile |
@@ -43,7 +41,7 @@ That puts the badge on the right of the bar. Then pair this machine once
 
 ### Needs
 
-Everything is on a standard Omarchy install; listed so nothing is a surprise.
+Everything here is on a standard Omarchy install.
 
 | Package | For |
 |---|---|
@@ -88,8 +86,8 @@ vertical monitor. The plugin never edits this file for you.
 
 `:` is for what a single key does not deserve. It opens a prompt on the last
 row with completion as you type; `Tab` takes the first thing still on offer,
-`enter` runs it and `esc` leaves. Every command is something a key already
-does, so nothing hides behind one.
+`enter` runs it and `esc` leaves. Every command does something a key already
+does.
 
 | Command | What it does |
 |---|---|
@@ -103,12 +101,11 @@ not exist rather than emptying the feed.
 
 ### The mouse
 
-It works throughout, the way `mouse=a` works in LazyVim: the keyboard is the
-main road and the mouse never gets its own behaviour. Content does not react
-to the pointer at all — no row lights up under it — because there is one
-marker, the cursor line, and the mouse moves that rather than painting a
-second one. Buttons and links still answer, as buttons and links should. A click **moves the
-cursor**, it does not open — double click is what `enter` is. The wheel
+It works throughout, the way `mouse=a` works in LazyVim. There is one marker,
+the cursor line, and the mouse moves it; content never lights up under the
+pointer. Buttons and links still answer to it.
+
+A click moves the cursor. Double click does what `enter` does. The wheel
 scrolls, the avatar opens a profile, and a commit's body is selectable: drag
 across it and copy as you would in a terminal.
 
@@ -117,8 +114,8 @@ pictures, `enter` opens the one in front in the browser and `esc` closes it.
 
 ## Why it pairs a device instead of logging in
 
-dev-null has a real API, the one its mobile app uses, and it is authenticated by
-**signing each request with an SSH key you approved as a device**. So:
+dev-null has a real API, the one its mobile app uses. It authenticates each
+request by its signature, made with an SSH key you approved as a device. So:
 
 - No cookie is borrowed from your browser and no password is stored anywhere.
 - The key is made here, lives in `~/.local/share/omarchy-devnull`, and is never
@@ -141,8 +138,8 @@ touches the key; the QML asks it and reads JSON back.
 It makes the key, registers a handler for `devnull://` links, opens the approval
 page in your browser, and redeems the code that comes back. One minute, once.
 
-Then, if you have never done it, **accept the commit rules on dev-null.sh**.
-Until you do, the server refuses every reply — from here, from the app, from
+Then, if you have never done it, accept the commit rules on dev-null.sh. Until
+you do, the server refuses every reply you send, from here, from the app, from
 anywhere.
 
 ## Remove
@@ -171,31 +168,31 @@ the three window rules from `hyprland.lua` if you added them.
 | Feed refresh while open | 20s | Reloads the popup's feed while you are looking at it. |
 | Lines shown | 2 | Lines of each commit in the popup; the full client shows them whole. |
 
-## Three things worth knowing
+## Worth knowing
 
-**The badge counts everything.** Replies and mentions, but also stars, follows
-and moderation outcomes. The only count that can be fetched without side effects
-is a single total, with no breakdown — see the next point for why that matters.
+The badge counts every kind of notification: replies and mentions, but also
+stars, follows and moderation outcomes. The only count that can be fetched
+without side effects is a single total, with no breakdown. The next paragraph
+is why that matters.
 
-**Opening the panel marks your notifications read**, on the website and in the
-official app too. That is not a choice this plugin makes: listing notifications
-is what marks them read, upstream, whatever filter you ask for. So the closed
-panel never lists them — it only asks for the count — and the list is fetched
-once, when you open it, because opening it *is* reading them.
+Opening the panel marks your notifications read, on the website and in the
+official app too. Listing notifications is what marks them read, upstream,
+whatever filter you ask for. So the closed panel only asks for the count, and
+the list is fetched once, when you open it, because opening it is reading them.
 
-**Older pages stay put.** Once you click "older…", the feed stops auto-refreshing
-so it cannot throw away what you scrolled to. Close and reopen the panel to get
-back to the top.
+Once you click "older…", the feed stops refreshing by itself, so it cannot
+throw away what you scrolled to. Close and reopen the panel to get back to the
+top.
 
-**Signed out shows the real thing.** dev-null is server rendered, so its home
-page carries the whole Latest log as JSON. With no key the plugin reads that,
-derives the short hashes the way the site's own `CommitResource` does, and
-hands the views the same shape the API would have. Read-only: starring and
+Signed out, what you see is the live site. dev-null is server rendered, so its
+home page carries the whole Latest log as JSON. With no key the plugin reads
+that, derives the short hashes the way the site's own `CommitResource` does,
+and hands the views the shape the API would have given them. Starring and
 replying need the pairing.
 
-**A reply can be held.** dev-null moderates commits from accounts without
-"good reputation", so yours may come back pending. The panel says which; it
-never pretends a held reply is live.
+A reply can come back held. dev-null moderates commits from accounts without
+"good reputation", so yours may be pending for a while. The panel shows the
+state the server returned.
 
 ## When it breaks
 
@@ -207,8 +204,7 @@ restarting the shell.
 A wrong clock, a dead network and a machine that was never connected all look
 different on purpose. Upstream answers 401 for both a refused device and an
 expired signature, so the plugin reads the error code in the body rather than
-the status: a clock six minutes out says to check the clock, and never sends
-you off to re-pair something that was never broken.
+the status. A clock six minutes out tells you to check the clock.
 
 ## Limits
 
@@ -236,21 +232,21 @@ scripts/
 tests/             tests/run, all against a mock of dev-null.sh
 ```
 
-`Model.js` holds every decision that can be made without QML (what to call
-when, how a commit becomes a row, the palette, and the whole character grid —
-the rail glyphs, a header padded to a column count, a frame's border), so node
-can test it. Rows and pages only talk to `FullPanel`; it is the one that knows
-the service.
+`Model.js` holds every decision that can be made without QML: what to call
+when, how a commit becomes a row, the palette, the rail glyphs, the two halves
+of a header line, a frame's border. That is what node can test. Rows and pages
+only talk to `FullPanel`, which is the one that knows the service.
 
-Two components keep the grid honest. `ui/Metrics.qml` measures one cell and one
-line, once, so nothing measures them again its own way. `ui/Rail.qml` draws the
-graph rail, so the log, the notifications and the bar popup cannot drift apart.
+Two components keep the grid honest. `ui/Metrics.qml` owns the font size the
+grid is measured at, along with the cell width and the line pitch, so nothing
+can measure at one size and paint at another. `ui/Rail.qml` draws the graph
+rail, so the log, the notifications and the bar popup cannot drift apart.
 
-Every glyph the grid draws is declared in one place, `Model.GLYPHS`, because a
-glyph the monospace font lacks falls back to another face at another width and
-shears every line under it. `tests/glyph-test` asks fontconfig who serves each
-one and fails if any answer is not the grid font — which is a thing counting
-code points cannot catch, and did not.
+Every glyph the grid draws is declared in one place, `Model.GLYPHS`. A glyph
+the monospace font lacks falls back to another face at another width and shears
+every line under it, so `tests/glyph-test` asks fontconfig who serves each one
+and fails if any answer is not the grid font. Counting code points cannot catch
+that.
 
 ## Tests
 
@@ -263,5 +259,5 @@ for it, so no test ever posts a real commit. The mock verifies the signatures
 it is sent with `ssh-keygen -Y verify`, so a request that would be refused
 upstream is refused here too.
 
-`tests/glyph-test` is the odd one: it asks fontconfig, not node, because
+`tests/glyph-test` is the odd one. It asks fontconfig rather than node, because
 whether a glyph is one cell wide is a question only the font can answer.
