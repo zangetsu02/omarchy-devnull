@@ -13,22 +13,20 @@ browser tab open. There are three surfaces.
   commit and follow without leaving it.
 
 It is drawn the way a terminal draws. The commit graph is box-drawing
-characters rather than shapes, a pane names itself in its own top border, and
-the last two rows are a status line and a `:` prompt. Background, text and font
-come from the Omarchy theme; the author lanes use dev-null's own palette.
+characters rather than shapes, with each avatar sitting on its author's lane as
+dev-null draws it; a pane names itself in its own top border, and the last two
+rows are a status line and a `:` prompt. Background, text and font come from the
+Omarchy theme; the author lanes use dev-null's own palette.
 
 On a machine that has never been connected it shows the real Latest log,
 read-only, taken from the page dev-null already serves to everyone. There is
 one `[ connect ]` in the status line and the feed underneath it.
 
-![The log drawn as a terminal draws it: a character rail, one header line per commit, link cards and threads in place](docs/screenshots/log.png)
-
-*Signed out: the real Latest log, read from the page dev-null serves everyone,
-with one `[ connect ]` in the status line.*
+![The log as a commit graph: each avatar sits on its author's lane, one header line per commit, link cards and threads in place](docs/screenshots/log.png)
 
 | Notifications | A profile |
 |---|---|
-| ![Notifications on the rail, each with its icon](docs/screenshots/notifications.png) | ![A profile with its commits, followers and following](docs/screenshots/profile.png) |
+| ![Notifications on the same lane the log uses, unread ones filled](docs/screenshots/notifications.png) | ![A profile with its level, achievements, commit activity and commits](docs/screenshots/profile.png) |
 
 ## Install
 
