@@ -8,9 +8,10 @@ browser tab open. There are three surfaces.
 - The popup (click the icon): who reached you and the last three commits.
   `o` or Open goes to the full client.
 - The full client: the following, latest and trending logs on a commit graph,
-  threads opened in place, notifications, your starred commits and anyone's
-  profile, with pictures and link cards drawn in place. Star, reply, quote,
-  commit and follow without leaving it.
+  threads opened in place, notifications, your starred commits, anyone's
+  profile, and your private messages, with pictures and link cards drawn in
+  place. Star, give a pastel, reply, quote, commit, follow, mute and block
+  without leaving it.
 
 It is drawn the way a terminal draws. The commit graph is box-drawing
 characters rather than shapes, with each avatar sitting on its author's lane as
@@ -76,7 +77,7 @@ vertical monitor. The plugin never edits this file for you.
 | `c` | write a commit (`ctrl+enter` sends it) |
 | `p` | the author's profile |
 | `enter` · `O` · `y` | the commit page · open it on the site · copy the link |
-| `g l` `g n` `g s` `g p` | log · notifications · starred · your profile |
+| `g l` `g n` `g r` `g s` `g p` | log · notifications · messages · starred · your profile |
 | `⌫` · `R` · `esc` | back · refresh · close |
 | `:` | the command line (below) |
 
@@ -91,7 +92,9 @@ does.
 |---|---|
 | `:log following` · `:log latest` · `:log trending` | switch log |
 | `:notifications` · `:starred` · `:profile @someone` | go there |
-| `:star` · `:reply` · `:open` · `:copy` | act on the commit under the cursor |
+| `:star` · `:pastel` · `:reply` · `:open` · `:copy` | act on the commit under the cursor |
+| `:mute` · `:block` · `:report` | its author, or the commit itself |
+| `:go @someone` · `:go <link>` · `:go <hash>` | go wherever that points |
 | `:refresh` · `:connect` · `:quit` | reload · pair this machine · close |
 
 An unknown command answers the way vim does, and `:log` refuses a log that does
@@ -107,8 +110,27 @@ A click moves the cursor. Double click does what `enter` does. The wheel
 scrolls, the avatar opens a profile, and a commit's body is selectable: drag
 across it and copy as you would in a terminal.
 
+In the composer, `Tab` completes an `@mention` from the handles on screen.
+dev-null's own search is a web route behind a session cookie, which a client
+that signs with a device key does not have, so `:go` resolves what you type
+instead of searching for it.
+
 Click a picture to see it full size; there `←` `→` step through a commit's
 pictures, `enter` opens the one in front in the browser and `esc` closes it.
+
+## Private messages
+
+`g r` opens them. dev-null calls them remotes: the inbox on the left with its
+open, fetched and stashed tabs, the thread on the right with the newest at the
+bottom, and a prompt under it. Each message hangs off its author's lane, the
+way a commit does.
+
+Opening a thread marks it read, which is what opening it on the website does
+too. A request someone sent you can be taken into your conversations or turned
+away. Groups work the same as one-to-one threads.
+
+The prompt turns into a reason when the other person does not take messages
+from you, rather than letting you write something that will be refused.
 
 ## Why it pairs a device instead of logging in
 
@@ -193,7 +215,17 @@ replying need the pairing.
 
 A reply can come back held. dev-null moderates commits from accounts without
 "good reputation", so yours may be pending for a while. The panel shows the
-state the server returned.
+state the server returned. A commit of your own can be taken back.
+
+Pastéis come out of a daily allowance, so the button goes quiet once the day's
+are spent, and running out says more tomorrow rather than reading as a failure.
+
+Muting and blocking can be undone from the same button that set them: the
+client reads who you have muted and blocked when a profile opens, so it never
+sends you to the website to lift what it did.
+
+A draft survives a restart. Whatever you had typed and not sent is on disk,
+and comes back with the panel.
 
 ## When it breaks
 
@@ -223,8 +255,10 @@ manifest.json  README.md  LICENSE  preview.png
 qml/
   Panel.qml        the bar icon and its popup (entry point)
   FullPanel.qml    the full client: layout, keys, navigation (entry point)
-  data/            Service.qml, Pager.qml and Model.js: state and pure logic
-  views/           the client's pages and rows, the composer, the pictures
+  data/            Service.qml, Remotes.qml, Pager.qml and Model.js:
+                   state and pure logic
+  views/           the client's pages and rows, the composer, the messages,
+                   the pictures
   ui/              shared building blocks: Mono, Metrics, Rail, FrameLine,
                    LinkText, ActionButton, Avatar, Picture
 scripts/
@@ -255,7 +289,7 @@ that.
 tests/run
 ```
 
-Nine files. Nothing there touches dev-null.sh: `tests/mock-devnull` stands in
+Ten files. Nothing there touches dev-null.sh: `tests/mock-devnull` stands in
 for it, so no test ever posts a real commit. The mock verifies the signatures
 it is sent with `ssh-keygen -Y verify`, so a request that would be refused
 upstream is refused here too.
