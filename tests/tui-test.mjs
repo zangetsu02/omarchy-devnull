@@ -176,11 +176,11 @@ assert.match(Model.errorLine({ kind: "auth", error: "x" }), /setup-devnull/)
 assert.equal(Model.nextFailureCount(2, { kind: "auth" }), 3)
 
 // Signed out, the panel reads the public feed instead of the API.
-assert.deepEqual(Array.from(Model.tickCalls(false, false, false, true)), ["publicFeed"])
-assert.deepEqual(Array.from(Model.tickCalls(true, false, false, true)), ["publicFeed"])
-assert.deepEqual(Array.from(Model.openCalls(false, true)), ["publicFeed"])
+assert.deepEqual(Array.from(Model.tickCalls({ signedOut: true })), ["publicFeed"])
+assert.deepEqual(Array.from(Model.tickCalls({ panelOpen: true, signedOut: true })), ["publicFeed"])
+assert.deepEqual(Array.from(Model.openCalls({ signedOut: true })), ["publicFeed"])
 // Signed in, nothing changes.
-assert.deepEqual(Array.from(Model.tickCalls(false, false, false, false)), ["me"])
-assert.deepEqual(Array.from(Model.openCalls(false, false)), ["notifications", "feed"])
+assert.deepEqual(Array.from(Model.tickCalls({})), ["me"])
+assert.deepEqual(Array.from(Model.openCalls({})), ["notifications", "feed"])
 
 console.log("Model.js: tui checks passed")

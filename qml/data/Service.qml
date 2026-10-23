@@ -73,8 +73,18 @@ QtObject {
     process.running = true
   }
 
+  // Where the panel stands, as one value, so the rules can be asked in one way.
+  function state() {
+    return {
+      panelOpen: root.panelOpen,
+      broken: root.broken,
+      expanded: root.expanded,
+      signedOut: root.signedOut
+    }
+  }
+
   function tick() {
-    var calls = Model.tickCalls(root.panelOpen, root.broken, root.expanded, root.signedOut)
+    var calls = Model.tickCalls(root.state())
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
   }
 
@@ -127,7 +137,7 @@ QtObject {
     // Broken, this is a single probe: a successful answer clears the failure
     // count, so re-pairing is noticed without restarting the shell.
     var wasBroken = root.broken
-    var calls = Model.openCalls(root.broken, root.signedOut)
+    var calls = Model.openCalls(root.state())
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     if (wasBroken) root.recoveryCheck.restart()
   }
@@ -136,7 +146,7 @@ QtObject {
   property Timer recoveryCheck: Timer {
     interval: 1500
     onTriggered: if (!root.broken && root.panelOpen) {
-      var calls = Model.openCalls(false, root.signedOut)
+      var calls = Model.openCalls({ signedOut: root.signedOut })
       for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     }
   }

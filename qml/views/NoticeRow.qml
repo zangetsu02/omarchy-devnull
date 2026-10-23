@@ -37,36 +37,18 @@ Item {
     if (target) root.view.goTo(target.page, target.argument)
   }
 
-  FontMetrics {
-    id: fm
-    font.family: Style.font.family
-    font.pixelSize: Style.font.body
-  }
-  readonly property real cell: fm.advanceWidth("0")
-  // The pitch the text actually uses. TextEdit has no lineHeight to stretch it,
-  // so a rail stepping any wider than this draws `│` dashed and drifts away
-  // from the line it belongs to.
-  readonly property real lineH: fm.height
+  Metrics { id: grid }
 
   // The same rail the log draws, so the two pages read as one program. An
   // unread notice is the filled node; a read one is hollow.
-  Column {
-    x: root.railWidth / 2 - root.cell
+  Rail {
+    x: root.railWidth / 2 - grid.cell
     y: root.pad
-    spacing: 0
-    Repeater {
-      model: Math.max(1, Math.ceil((root.height - root.pad) / root.lineH))
-      Mono {
-        required property int index
-        width: root.cell * 2
-        height: root.lineH
-        verticalAlignment: Text.AlignVCenter
-        font.pixelSize: Style.font.body
-        color: index === 0 ? (root.notice.unread ? root.tint : root.view.railColor) : root.view.railColor
-        text: index === 0 ? (root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node)
-                          : Model.rail("body", {})
-      }
-    }
+    metrics: grid
+    rowHeight: root.height - root.pad
+    headColor: root.notice.unread ? root.tint : root.view.railColor
+    tailColor: root.view.railColor
+    head: root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
   }
 
   Column {

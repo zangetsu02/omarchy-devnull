@@ -158,23 +158,30 @@ function pollDelay(panelOpen, settings) {
 // does, so it must not count.
 var BROKEN_AFTER = 3
 
-function tickCalls(panelOpen, broken, expanded, signedOut) {
+// What to call on a tick, given where the panel stands. The state arrives as
+// one named object rather than a row of booleans, so a call site reads as a
+// sentence instead of `tickCalls(a, b, c, d)`.
+//
+// state: { panelOpen, broken, expanded, signedOut }
+function tickCalls(state) {
+    var s = state || {}
     // Never paired: the home page carries the whole Latest log as JSON, with no
     // signature, so the panel shows the real thing instead of an empty screen.
-    if (signedOut) return ["publicFeed"]
-    if (broken) return []
+    if (s.signedOut) return ["publicFeed"]
+    if (s.broken) return []
     // Closed, only /me: it carries the unread count without marking anything read.
-    if (!panelOpen) return ["me"]
+    if (!s.panelOpen) return ["me"]
     // Once older pages are loaded, refreshing would replace everything scrolled
     // to with page one. The feed waits until the panel is opened again.
-    return expanded ? [] : ["feed"]
+    return s.expanded ? [] : ["feed"]
 }
 
-function openCalls(broken, signedOut) {
-    if (signedOut) return ["publicFeed"]
+function openCalls(state) {
+    var s = state || {}
+    if (s.signedOut) return ["publicFeed"]
     // Broken, one probe: it costs nothing and it is how a re-pair gets noticed
     // without restarting the shell.
-    if (broken) return ["me"]
+    if (s.broken) return ["me"]
     // The one place notifications are listed, which is also what marks them read.
     return ["notifications", "feed"]
 }

@@ -11,13 +11,9 @@ Mono {
   property string title: ""
   property color lineColor: Color.muted
 
-  readonly property real cell: metrics.advanceWidth("0")
+  readonly property real cell: grid.cell
 
-  FontMetrics {
-    id: metrics
-    font.family: Style.font.family
-    font.pixelSize: Style.font.body
-  }
+  Metrics { id: grid }
 
   color: lineColor
   font.pixelSize: Style.font.body

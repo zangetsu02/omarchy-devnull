@@ -17,20 +17,20 @@ vm.runInContext(source, Model)
 
 // Closed, a tick asks /me and nothing else — listing notifications would mark
 // them read on the website and in the official app.
-assert.deepEqual(Array.from(Model.tickCalls(false, false)), ["me"])
+assert.deepEqual(Array.from(Model.tickCalls({})), ["me"])
 
 // Opening asks for the notifications once, and the feed.
-assert.deepEqual(Array.from(Model.openCalls()), ["notifications", "feed"])
+assert.deepEqual(Array.from(Model.openCalls({})), ["notifications", "feed"])
 
 // Ticking while open refreshes the feed only: the notifications are read already.
-assert.deepEqual(Array.from(Model.tickCalls(true, false)), ["feed"])
+assert.deepEqual(Array.from(Model.tickCalls({ panelOpen: true })), ["feed"])
 
 // Three auth failures in a row, and it goes broken and stops calling.
 let failures = 0
 for (let i = 0; i < 3; i++) failures = Model.nextFailureCount(failures, { kind: "auth" })
 assert.equal(Model.isBroken(failures), true)
-assert.deepEqual(Array.from(Model.tickCalls(false, true)), [])
-assert.deepEqual(Array.from(Model.tickCalls(true, true)), [])
+assert.deepEqual(Array.from(Model.tickCalls({ broken: true })), [])
+assert.deepEqual(Array.from(Model.tickCalls({ panelOpen: true, broken: true })), [])
 
 // Two is not three: the plugin does not give up on the first hiccup.
 assert.equal(Model.isBroken(Model.nextFailureCount(1, { kind: "auth" })), false)
@@ -85,13 +85,13 @@ assert.equal(Model.draftFor(drafts, "b"), "another")
 
 // Once older pages are loaded, the timer must stop replacing the feed with
 // page one — it would throw away everything the user scrolled to.
-assert.deepEqual(Array.from(Model.tickCalls(true, false, false)), ["feed"])
-assert.deepEqual(Array.from(Model.tickCalls(true, false, true)), [])
-assert.deepEqual(Array.from(Model.tickCalls(false, false, true)), ["me"])
+assert.deepEqual(Array.from(Model.tickCalls({ panelOpen: true })), ["feed"])
+assert.deepEqual(Array.from(Model.tickCalls({ panelOpen: true, expanded: true })), [])
+assert.deepEqual(Array.from(Model.tickCalls({ expanded: true })), ["me"])
 
 // Opening the panel while broken probes once, so re-pairing is noticed without
 // restarting the shell.
-assert.deepEqual(Array.from(Model.openCalls(false)), ["notifications", "feed"])
-assert.deepEqual(Array.from(Model.openCalls(true)), ["me"])
+assert.deepEqual(Array.from(Model.openCalls({})), ["notifications", "feed"])
+assert.deepEqual(Array.from(Model.openCalls({ broken: true })), ["me"])
 
 console.log("service: all checks passed")

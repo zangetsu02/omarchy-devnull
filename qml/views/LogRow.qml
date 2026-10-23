@@ -32,18 +32,10 @@ Item {
 
   // The grid. Every column below is a whole number of these, so the rail, the
   // avatar and the text start on the same boundary on every line.
-  FontMetrics {
-    id: fm
-    font.family: Style.font.family
-    font.pixelSize: Style.font.body
-  }
-  readonly property real cell: fm.advanceWidth("0")
-  // The pitch the text actually uses. TextEdit has no lineHeight to stretch it,
-  // so a rail stepping any wider than this draws `│` dashed and drifts away
-  // from the line it belongs to.
-  readonly property real lineH: fm.height
+  Metrics { id: grid }
+  readonly property real cell: grid.cell
   // rail(2) + avatar(2) + a space = where every line of text begins
-  readonly property real textCol: cell * (topLevel ? 5 : 7)
+  readonly property real textCol: grid.cell * (topLevel ? 5 : 7)
 
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
@@ -59,27 +51,17 @@ Item {
 
   // --- The rail: drawn as a terminal would draw it ----------------------------
 
-  Column {
-    id: rail
-    x: root.topLevel ? 0 : root.cell * 2
+  Rail {
+    x: root.topLevel ? 0 : grid.cell * 2
     y: root.pad
-    spacing: 0
-    Repeater {
-      model: Math.max(1, Math.ceil((root.height - root.pad) / root.lineH))
-      Mono {
-        required property int index
-        width: root.cell * (root.topLevel ? 2 : 4)
-        height: root.lineH
-        verticalAlignment: Text.AlignVCenter
-        font.pixelSize: Style.font.body
-        color: index === 0 ? root.lane : root.view.railColor
-        text: {
-          if (index > 0) return Model.rail("body", {})
-          if (root.topLevel) return Model.nodeGlyph(root.commit, root.selected)
-          return Model.rail("reply", { last: root.lastReply })
-        }
-      }
-    }
+    metrics: grid
+    rowHeight: root.height - root.pad
+    cells: root.topLevel ? 2 : 4
+    headColor: root.lane
+    tailColor: root.view.railColor
+    head: root.topLevel
+      ? Model.nodeGlyph(root.commit, root.selected)
+      : Model.rail("reply", { last: root.lastReply })
   }
 
   // --- The commit -------------------------------------------------------------

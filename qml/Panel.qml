@@ -244,16 +244,8 @@ Panel {
 
   // --- Building blocks ------------------------------------------------------------
 
-  FontMetrics {
-    id: fm
-    font.family: Style.font.family
-    font.pixelSize: Style.font.body
-  }
-  readonly property real cell: fm.advanceWidth("0")
-  // The pitch the text actually uses. TextEdit has no lineHeight to stretch it,
-  // so a rail stepping any wider than this draws `│` dashed and drifts away
-  // from the line it belongs to.
-  readonly property real lineH: fm.height
+  Metrics { id: grid }
+  readonly property real cell: grid.cell
 
   component SectionLabel: Mono {
     topPadding: Style.space(10)
@@ -339,26 +331,19 @@ Panel {
     onClicked: root.openFull("commit", glance.row.id)
 
     // The same character rail as the full client, so the two read as one thing.
-    Column {
+    Rail {
       x: Style.space(6)
       y: Style.space(8)
-      spacing: 0
-      Repeater {
-        model: Math.max(1, Math.ceil((glance.height - Style.space(8)) / root.lineH))
-        Mono {
-          required property int index
-          width: root.cell * 2
-          height: root.lineH
-          verticalAlignment: Text.AlignVCenter
-          color: index === 0 ? glance.lane : root.railColor
-          text: index === 0 ? Model.nodeGlyph(glance.modelData, false) : Model.rail("body", {})
-        }
-      }
+      metrics: grid
+      rowHeight: glance.height - Style.space(8)
+      headColor: glance.lane
+      tailColor: root.railColor
+      head: Model.nodeGlyph(glance.modelData, false)
     }
 
     Avatar {
       id: face
-      x: Style.space(6) + root.cell * 2
+      x: Style.space(6) + grid.cell * 2
       y: Style.space(8)
       size: root.cell * 2
       source: glance.row.avatar
