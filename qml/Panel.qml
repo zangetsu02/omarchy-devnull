@@ -45,12 +45,7 @@ Panel {
 
   // Same dance as the Spotify full player: hide first, summon on the next
   // turn, so Wayland unmaps the old surface before the shell maps it again.
-  // The setup needs a browser and a terminal; the popup opens one rather than
-  // telling anyone where to go looking.
-  function connect() {
-    Quickshell.execDetached(["omarchy-launch-terminal",
-                             Qt.resolvedUrl("../scripts/setup-devnull").toString().replace("file://", "")])
-  }
+  function connect() { feed.connect() }
 
   function openFull(page, argument) {
     root.close()
@@ -220,7 +215,6 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             width: openLabel.implicitWidth + Style.space(24)
             height: openLabel.implicitHeight + Style.space(10)
-            radius: 0
             color: openArea.containsMouse ? Qt.lighter(root.scheme.primary, 1.12) : root.scheme.primary
             Mono {
               id: openLabel
@@ -260,7 +254,6 @@ Panel {
     id: area
     signal clicked()
     width: column.width
-    radius: 0
     color: hover.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06) : "transparent"
     MouseArea {
       id: hover
@@ -335,7 +328,6 @@ Panel {
       x: Style.space(6)
       y: Style.space(8)
       metrics: grid
-      rowHeight: glance.height - Style.space(8)
       headColor: glance.lane
       tailColor: root.railColor
       head: Model.nodeGlyph(glance.modelData, false)

@@ -29,7 +29,6 @@ Item {
   readonly property bool topLevel: depth === 0
   readonly property var thread: view.threadFor(row.id)
   readonly property real pad: topLevel ? Style.space(12) : Style.space(6)
-  readonly property real gutter: Style.space(10)
 
   // The grid. Every column below is a whole number of these, so the rail, the
   // avatar and the text start on the same boundary on every line.
@@ -56,7 +55,6 @@ Item {
     x: root.topLevel ? 0 : grid.cell * 2
     y: root.pad
     metrics: grid
-    rowHeight: root.height - root.pad
     cells: root.topLevel ? 2 : 4
     headColor: root.lane
     tailColor: root.view.railColor
@@ -252,7 +250,6 @@ Item {
     color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
     border.width: 1
     border.color: boxHover.hovered ? Color.muted : root.view.railColor
-    radius: 0
     Picture {
       id: thumb
       visible: box.image !== ""

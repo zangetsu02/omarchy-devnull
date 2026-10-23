@@ -45,7 +45,6 @@ Item {
     x: root.railWidth / 2 - grid.cell
     y: root.pad
     metrics: grid
-    rowHeight: root.height - root.pad
     headColor: root.notice.unread ? root.tint : root.view.railColor
     tailColor: root.view.railColor
     head: root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
@@ -119,7 +118,6 @@ Item {
       width: body.width
       height: theirs.implicitHeight + Style.space(8)
       x: -Style.space(6)
-      radius: 0
       color: theirsArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.07) : "transparent"
       Mono {
         id: theirs
@@ -142,7 +140,6 @@ Item {
       color: ownArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05) : "transparent"
       border.width: 1
       border.color: ownArea.containsMouse ? Color.muted : root.view.railColor
-      radius: 0
       Mono {
         id: own
         x: Style.space(10)

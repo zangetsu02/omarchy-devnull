@@ -485,7 +485,6 @@ function rail(kind, opts) {
     switch (kind) {
     case "body": return GLYPHS.bar
     case "reply": return (o.last ? GLYPHS.lastBranch : GLYPHS.branch) + GLYPHS.dash + GLYPHS.arm
-    case "gap": return o.below ? GLYPHS.bar : " "
     default: return " "
     }
 }

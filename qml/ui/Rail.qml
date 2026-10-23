@@ -12,8 +12,9 @@ Column {
 
   // The grid this rail steps on.
   required property var metrics
-  // How tall the row is, so the tail reaches its bottom.
-  required property real rowHeight
+  // How tall the row is. Worked out from where the rail sits, so no caller has
+  // to get it right: one of the three used to stop eight pixels short.
+  property real rowHeight: parent ? parent.height - y : 0
   // The first glyph: the node, or the branch a reply hangs from.
   property string head: Model.GLYPHS.node
   property color headColor: "white"

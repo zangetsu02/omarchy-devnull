@@ -36,6 +36,14 @@ QtObject {
   // True once older pages were loaded: the timer then leaves the feed alone
   // rather than replacing everything scrolled to with page one.
   property bool expanded: false
+  readonly property string _setupPath: Qt.resolvedUrl("../../scripts/setup-devnull").toString().replace("file://", "")
+
+  // Connecting means running the setup, which needs a browser and a terminal.
+  // Both panels ask here rather than each knowing the path.
+  function connect() {
+    Quickshell.execDetached(["omarchy-launch-terminal", root._setupPath])
+  }
+
   property string _scriptPath: Qt.resolvedUrl("../../scripts/devnull").toString().replace("file://", "")
 
   property Timer _timer: Timer {

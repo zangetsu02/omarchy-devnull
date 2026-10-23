@@ -18,7 +18,6 @@ Rectangle {
 
   implicitWidth: content.implicitWidth + Style.space(12)
   implicitHeight: content.implicitHeight + Style.space(6)
-  radius: 0
   color: hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08) : "transparent"
 
   Row {

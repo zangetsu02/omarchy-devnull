@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import qs.Commons
 import "../ui"
-import "../data/Model.js" as Model
 
 // A list of commits on the graph rail, with a keyboard selection and a last
 // line that pages. The log, the starred commits and a profile all use it.

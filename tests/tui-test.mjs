@@ -27,9 +27,6 @@ assert.equal(Model.nodeGlyph({ deleted_at: "2026-10-21T00:00:00Z" }, true), G.no
 assert.equal(Model.rail("body", {}), G.bar)
 assert.equal(Model.rail("reply", { last: false }), G.branch + G.dash + G.arm)
 assert.equal(Model.rail("reply", { last: true }), G.lastBranch + G.dash + G.arm)
-// The gap between commits keeps the lane alive only while something follows.
-assert.equal(Model.rail("gap", { below: true }), G.bar)
-assert.equal(Model.rail("gap", { below: false }), " ")
 // An unknown kind draws nothing rather than breaking the grid.
 assert.equal(Model.rail("whatever", {}), " ")
 

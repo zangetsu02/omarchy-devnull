@@ -229,11 +229,8 @@ Item {
     "p": function () { root.goTo("profile", root.myUsername) }
   })
 
-  // Connecting means running the setup script, which needs a browser and a
-  // terminal. The panel opens one rather than telling anyone to go find it.
   function connect() {
-    Quickshell.execDetached(["omarchy-launch-terminal",
-                             Qt.resolvedUrl("../scripts/setup-devnull").toString().replace("file://", "")])
+    feed.connect()
     root.say("Finish connecting in the terminal that just opened.", false)
   }
 
