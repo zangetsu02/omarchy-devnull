@@ -101,7 +101,7 @@ Item {
         y: Style.space(7)
         width: parent.width - Style.space(20)
         textFormat: Text.StyledText
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: 4
         elide: Text.ElideRight
         text: root.view.quoting

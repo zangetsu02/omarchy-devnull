@@ -118,7 +118,7 @@ Item {
         width: parent.width - Style.space(12)
         text: root.notice.body
         font.pixelSize: Style.font.body
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: 4
         elide: Text.ElideRight
       }
@@ -139,7 +139,7 @@ Item {
         width: parent.width - Style.space(20)
         text: root.notice.body
         color: Color.muted
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: 3
         elide: Text.ElideRight
       }

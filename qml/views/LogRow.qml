@@ -131,7 +131,7 @@ Item {
       font.family: Style.font.family
       font.pixelSize: Style.font.body
       textFormat: TextEdit.PlainText
-      wrapMode: TextEdit.WrapAnywhere
+      wrapMode: TextEdit.Wrap
     }
 
     Box {
@@ -277,7 +277,7 @@ Item {
       Mono {
         width: parent.width
         text: box.text
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: box.lines
         elide: Text.ElideRight
       }
