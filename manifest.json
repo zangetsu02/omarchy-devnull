@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.zangetsu02.devnull",
   "name": "dev-null",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Christian Palladini",
   "license": "MIT",
   "description": "dev-null.sh in the Omarchy shell: an unread badge in the bar, a glance popup, and a full keyboard-driven client drawn as a git log --graph.",
