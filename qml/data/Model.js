@@ -646,3 +646,50 @@ function completeMention(text, handle) {
     var typed = String(text)
     return typed.slice(0, typed.lastIndexOf("@")) + "@" + handle + " "
 }
+
+// --- Private messages --------------------------------------------------------
+//
+// dev-null calls them remotes. A conversation is one row in the inbox; a
+// message is one line in a thread, on your side or theirs.
+
+var INBOX_TABS = ["open", "fetched", "stashed"]
+
+function remoteFor(conversation, myUsername) {
+    if (!conversation) return null
+    var partner = conversation.partner || {}
+    var last = conversation.last_message || {}
+    var author = last.author || {}
+    return {
+        id: conversation.id,
+        username: partner.username || "",
+        handle: "@" + (partner.username || "?"),
+        name: partner.name || partner.username || "?",
+        avatar: partner.avatar_url || "",
+        lane: laneOf({ author: partner }),
+        preview: last.body || "",
+        when: last.created_at || "",
+        // Whether the last word was yours, which an inbox marks. Asked of your
+        // own handle, not inferred from the partner's: a group has more than
+        // two people in it.
+        mine: !!author.username && author.username === myUsername,
+        unread: conversation.unread_count || 0
+    }
+}
+
+function messageFor(message, myUsername) {
+    if (!message) return null
+    var author = message.author || {}
+    return {
+        id: message.id,
+        body: message.body || "",
+        handle: "@" + (author.username || "?"),
+        name: author.name || author.username || "?",
+        avatar: author.avatar_url || "",
+        lane: laneOf({ author: author }),
+        when: message.created_at || "",
+        mine: !!author.username && author.username === myUsername,
+        replyTo: message.reply_to_id || null,
+        reactions: message.reactions || [],
+        images: message.images || []
+    }
+}

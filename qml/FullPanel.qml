@@ -109,6 +109,12 @@ Item {
 
   Pager { id: starred; service: feed }
 
+  Remotes {
+    id: remotes
+    service: feed
+    myUsername: root.myUsername
+  }
+
   // --- What rows and pages call ---------------------------------------------------
 
   function threadFor(id) { return feed.threads[id] || null }
@@ -204,6 +210,9 @@ Item {
     if (name === "profile") profileName = argument || myUsername
     if (name === "commit") commitId = argument
     if (name === "starred") starred.args = ["starred"]
+    // The inbox is only worth fetching when it is on screen, and it is the
+    // one page that marks things read by being opened.
+    if (name === "remotes") remotes.refresh()
     replyingTo = ""
     scope.forceActiveFocus()
   }
@@ -273,7 +282,8 @@ Item {
     "l": function () { root.goTo("log", "") },
     "n": function () { root.goTo("notifications", "") },
     "s": function () { root.goTo("starred", "") },
-    "p": function () { root.goTo("profile", root.myUsername) }
+    "p": function () { root.goTo("profile", root.myUsername) },
+    "r": function () { root.goTo("remotes", "") }
   })
 
   function connect() {
@@ -499,6 +509,15 @@ Item {
                                   end: "That's the oldest notification. There's nothing before it.",
                                   empty: "$ cat /dev/notifications  # nothing yet" })
           }
+        }
+
+        // --- Remotes -------------------------------------------------------------
+
+        RemotesPage {
+          anchors.fill: parent
+          visible: root.page === "remotes"
+          view: root
+          remotes: remotes      // the Remotes above, by id
         }
 
         // --- Starred -------------------------------------------------------------

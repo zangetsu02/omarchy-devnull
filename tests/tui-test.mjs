@@ -127,6 +127,52 @@ assert.equal(Model.silences([], "noisy"), false)
 assert.equal(Model.silences(null, "noisy"), false)
 assert.equal(Model.silences(silenced, ""), false)
 
+// --- Private messages --------------------------------------------------------
+
+// A conversation as the inbox row draws it: who, the last thing said, when,
+// and whether anything is unread.
+const chat = Model.remoteFor({
+  id: "c1",
+  partner: { username: "ndk98z", name: "Khanhz", avatar_url: "u", lane: 2 },
+  last_message: { id: 7, body: "hey", created_at: "2026-10-23T07:00:00Z",
+                  author: { username: "ndk98z" } },
+  unread_count: 3,
+}, "zangetsu02")
+assert.equal(chat.handle, "@ndk98z")
+assert.equal(chat.name, "Khanhz")
+assert.equal(chat.preview, "hey")
+assert.equal(chat.unread, 3)
+assert.equal(chat.lane, 2)
+assert.equal(chat.mine, false)
+// What you said last is marked, the way an inbox shows your own reply.
+const sent = Model.remoteFor({
+  id: "c2", partner: { username: "x" },
+  last_message: { body: "on it", author: { username: "zangetsu02" } },
+}, "zangetsu02")
+assert.equal(sent.mine, true)
+assert.equal(sent.unread, 0)
+assert.equal(Model.remoteFor(null), null)
+// In a group the partner is not the only other person, so your own handle is
+// what decides, never "not the partner".
+const group = Model.remoteFor({
+  id: "c3", partner: { username: "team" },
+  last_message: { body: "ship it", author: { username: "pptx704" } },
+}, "zangetsu02")
+assert.equal(group.mine, false)
+
+// A message, and whose side it goes on.
+const mine = Model.messageFor({ id: 8, body: "on it", author: { username: "zangetsu02" } },
+                              "zangetsu02")
+assert.equal(mine.mine, true)
+assert.equal(mine.body, "on it")
+const theirs = Model.messageFor({ id: 7, body: "hey", author: { username: "ndk98z" } },
+                                "zangetsu02")
+assert.equal(theirs.mine, false)
+assert.equal(theirs.handle, "@ndk98z")
+
+// The inbox tabs, named as the server names them.
+assert.deepEqual(Array.from(Model.INBOX_TABS), ["open", "fetched", "stashed"])
+
 // --- Frames -----------------------------------------------------------------
 
 // A titled top border fills its width exactly, whatever the title.
