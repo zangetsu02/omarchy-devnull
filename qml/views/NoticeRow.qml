@@ -24,14 +24,6 @@ Item {
   // under everything, and the MouseAreas above take their own clicks first.
   Clickable { id: rowArea; anchors.fill: parent; onClicked: root.openTarget() }
 
-  // The whole row lights up: it is one click away from where it leads.
-  Rectangle {
-    anchors.fill: parent
-    anchors.leftMargin: root.railWidth
-    visible: rowArea.containsMouse
-    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
-  }
-
   function openTarget() {
     var target = Model.noticeTarget(root.notice, root.view.myUsername)
     if (target) root.view.goTo(target.page, target.argument)
@@ -118,7 +110,7 @@ Item {
       width: body.width
       height: theirs.implicitHeight + Style.space(8)
       x: -Style.space(6)
-      color: theirsArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.07) : "transparent"
+      color: "transparent"
       Mono {
         id: theirs
         x: Style.space(6)
@@ -137,9 +129,9 @@ Item {
       visible: !root.notice.theirs && root.notice.body !== ""
       width: body.width
       height: own.implicitHeight + Style.space(12)
-      color: ownArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05) : "transparent"
+      color: "transparent"
       border.width: 1
-      border.color: ownArea.containsMouse ? Color.muted : root.view.railColor
+      border.color: root.view.railColor
       Mono {
         id: own
         x: Style.space(10)

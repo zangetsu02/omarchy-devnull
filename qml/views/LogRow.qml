@@ -40,13 +40,14 @@ Item {
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
 
-  // Selected: a wash and a bar in the action blue, the way the site marks focus.
+  // The cursor line, and nothing else. One marker: the filled node in the rail
+  // says which row, this says it again quietly across the width. A bar beside
+  // it was a third way of saying the same thing.
   Rectangle {
     anchors.fill: parent
     anchors.leftMargin: root.textCol
     visible: root.selected
-    color: Qt.rgba(root.view.primary.r, root.view.primary.g, root.view.primary.b, 0.07)
-    Rectangle { width: 2; height: parent.height; color: root.view.primary }
+    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05)
   }
 
   // --- The rail: drawn as a terminal would draw it ----------------------------
@@ -247,9 +248,9 @@ Item {
     readonly property real inset: Style.space(10)
     width: body.width
     height: Math.max(boxColumn.implicitHeight, thumb.visible ? thumb.height : 0) + inset * 1.4
-    color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
+    color: "transparent"
     border.width: 1
-    border.color: boxHover.hovered ? Color.muted : root.view.railColor
+    border.color: root.view.railColor
     Picture {
       id: thumb
       visible: box.image !== ""

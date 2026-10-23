@@ -254,7 +254,7 @@ Panel {
     id: area
     signal clicked()
     width: column.width
-    color: hover.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06) : "transparent"
+    color: "transparent"
     MouseArea {
       id: hover
       anchors.fill: parent

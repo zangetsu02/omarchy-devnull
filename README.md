@@ -104,11 +104,13 @@ not exist rather than emptying the feed.
 ### The mouse
 
 It works throughout, the way `mouse=a` works in LazyVim: the keyboard is the
-main road and the mouse never gets its own behaviour. A click **moves the
+main road and the mouse never gets its own behaviour. Content does not react
+to the pointer at all — no row lights up under it — because there is one
+marker, the cursor line, and the mouse moves that rather than painting a
+second one. Buttons and links still answer, as buttons and links should. A click **moves the
 cursor**, it does not open — double click is what `enter` is. The wheel
 scrolls, the avatar opens a profile, and a commit's body is selectable: drag
-across it and copy as you would in a terminal. There is no hover state, because
-there is one marker and the mouse moves it.
+across it and copy as you would in a terminal.
 
 Click a picture to see it full size; there `←` `→` step through a commit's
 pictures, `enter` opens the one in front in the browser and `esc` closes it.
