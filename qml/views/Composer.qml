@@ -70,7 +70,19 @@ Item {
       topPadding: Style.space(6)
       text: root.view.composerText
       onTextChanged: root.view.composerText = text
+      // Tab completes an @mention from the handles already on screen. There is
+      // no suggestion endpoint on the signed API: the web one is behind a
+      // session cookie this client does not have.
       Keys.onPressed: function (event) {
+        if (event.key === Qt.Key_Tab) {
+          var offers = Model.mentionsFor(field.text, root.view.handlesOnScreen())
+          if (offers.length > 0) {
+            field.text = Model.completeMention(field.text, offers[0])
+            field.cursorPosition = field.text.length
+          }
+          event.accepted = true
+          return
+        }
         if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
           root.view.postComposer()
           event.accepted = true

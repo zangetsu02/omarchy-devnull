@@ -157,7 +157,28 @@ Item {
         border.color: root.user.is_followed ? root.view.railColor : root.view.primary
         onClicked: root.service.follow(root.username, !root.user.is_followed)
       }
+      ActionButton {
+        icon: Model.ICONS.copy
+        label: "share"
+        onClicked: root.view.copyProfileLink(root.username, root.user.html_url)
+      }
       ActionButton { icon: "↗"; label: "on the site"; onClicked: root.view.openOnSite(root.user.html_url) }
+
+      // Someone else's account: the two ways to stop seeing it. Blocking is
+      // the heavier one and says so, because it works both ways.
+      ActionButton {
+        visible: !root.isMe
+        icon: Model.ICONS.mute
+        label: "mute"
+        onClicked: root.service.mute(root.username)
+      }
+      ActionButton {
+        visible: !root.isMe
+        icon: Model.ICONS.block
+        label: "block"
+        restColor: root.view.destructive
+        onClicked: root.service.block(root.username)
+      }
     }
 
     Standing {

@@ -25,7 +25,8 @@ var VERBS = {
 var ICONS = {
     star: "\u{f04ce}", unstarred: "\u{f04d2}", reply: "\u{f045a}", quote: "\u{f10d}",
     copy: "\u{f018f}", expand: "\u{f0142}", collapse: "\u{f0140}",
-    follow: "\u{f0415}", following: "\u{f012c}"
+    follow: "\u{f0415}", following: "\u{f012c}",
+    mute: "\u{f075f}", block: "\u{f0159}"
 }
 
 // --- Small immutable helpers ----------------------------------------------------
@@ -565,4 +566,62 @@ function frameLine(kind, width, title) {
         + label
         + new Array(Math.max(0, dashes - lead) + 1).join(GLYPHS.dash)
         + corners[1]
+}
+
+// --- Going somewhere by typing it --------------------------------------------
+//
+// dev-null's search is a web route behind a session cookie, and a client that
+// signs its requests with a device key does not have one. What it can do
+// without a server is resolve what someone typed.
+
+var SITE = "dev-null.sh"
+
+function destinationFor(text) {
+    var typed = String(text || "").trim().replace(/\/+$/, "")
+    if (typed === "") return null
+
+    var link = typed.match(/^https?:\/\/([^/]+)\/@([A-Za-z0-9_-]+)(?:\/commits\/([A-Za-z0-9]+))?$/)
+    if (link) {
+        if (link[1] !== SITE) return null
+        return link[3] ? { page: "commit", argument: link[3] }
+                       : { page: "profile", argument: link[2] }
+    }
+    if (typed.indexOf("://") >= 0) return null
+
+    if (typed.charAt(0) === "@")
+        return { page: "profile", argument: typed.slice(1) }
+    // Seven hex characters is a short hash; anything else that looks like a
+    // handle is one.
+    if (/^[0-9a-f]{7}$/.test(typed)) return { page: "commit", argument: typed }
+    if (/^[A-Za-z0-9_-]+$/.test(typed)) return { page: "profile", argument: typed }
+    return null
+}
+
+// --- Completing an @mention --------------------------------------------------
+//
+// From the handles already on screen, because there is no suggestion endpoint
+// on the signed API either.
+
+function _mentionWord(text) {
+    var typed = String(text || "")
+    var word = typed.slice(typed.lastIndexOf(" ") + 1)
+    return word.charAt(0) === "@" ? word.slice(1) : null
+}
+
+function mentionsFor(text, handles) {
+    var prefix = _mentionWord(text)
+    if (prefix === null) return []
+    var wanted = prefix.toLowerCase()
+    var out = []
+    for (var i = 0; i < (handles || []).length; i++) {
+        var handle = handles[i]
+        if (String(handle).toLowerCase().indexOf(wanted) === 0) out.push(handle)
+    }
+    return out
+}
+
+function completeMention(text, handle) {
+    if (_mentionWord(text) === null) return text
+    var typed = String(text)
+    return typed.slice(0, typed.lastIndexOf("@")) + "@" + handle + " "
 }

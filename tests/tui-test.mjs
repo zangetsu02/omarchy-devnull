@@ -68,6 +68,50 @@ assert.equal(Model.headerLeft({ short_hash: "0000000" }), "0000000  @?")
 assert.equal(Model.headerLeft(null), "")
 assert.equal(Model.headerRight(null), "")
 
+// --- Going somewhere by typing it -------------------------------------------
+//
+// dev-null's search is a web route behind a session cookie, which a signed
+// client does not have. What it can do without one is resolve what someone
+// typed: a handle, a link, or a short hash.
+
+assert.deepEqual({ ...Model.destinationFor("@zangetsu02") },
+                 { page: "profile", argument: "zangetsu02" })
+assert.deepEqual({ ...Model.destinationFor("zangetsu02") },
+                 { page: "profile", argument: "zangetsu02" })
+assert.deepEqual({ ...Model.destinationFor("https://dev-null.sh/@ndk98z") },
+                 { page: "profile", argument: "ndk98z" })
+assert.deepEqual({ ...Model.destinationFor("https://dev-null.sh/@ndk98z/commits/d453634") },
+                 { page: "commit", argument: "d453634" })
+assert.deepEqual({ ...Model.destinationFor("d453634") },
+                 { page: "commit", argument: "d453634" })
+// Trailing slashes and spaces are what a paste actually looks like.
+assert.deepEqual({ ...Model.destinationFor("  https://dev-null.sh/@ndk98z/  ") },
+                 { page: "profile", argument: "ndk98z" })
+// Nothing recognisable goes nowhere rather than somewhere wrong.
+assert.equal(Model.destinationFor(""), null)
+assert.equal(Model.destinationFor("not a thing at all"), null)
+assert.equal(Model.destinationFor("https://example.com/@who"), null)
+
+// --- Completing an @mention --------------------------------------------------
+//
+// From the handles already on screen: there is no suggestion endpoint on the
+// signed API either.
+
+const seen = ["zangetsu02", "ndk98z", "zxc", "nunomaduro"]
+assert.deepEqual(Array.from(Model.mentionsFor("write to @z", seen)), ["zangetsu02", "zxc"])
+assert.deepEqual(Array.from(Model.mentionsFor("@NDK", seen)), ["ndk98z"])
+// Only the word being typed counts, and only when it starts with @.
+assert.deepEqual(Array.from(Model.mentionsFor("@zangetsu02 hello n", seen)), [])
+assert.deepEqual(Array.from(Model.mentionsFor("plain text", seen)), [])
+assert.deepEqual(Array.from(Model.mentionsFor("", seen)), [])
+// An exact handle has nothing left to complete.
+assert.deepEqual(Array.from(Model.mentionsFor("@zxc", seen)), ["zxc"])
+
+// Completing replaces the word being typed, and leaves a space to carry on.
+assert.equal(Model.completeMention("hi @z", "zangetsu02"), "hi @zangetsu02 ")
+assert.equal(Model.completeMention("@n", "ndk98z"), "@ndk98z ")
+assert.equal(Model.completeMention("no at sign", "ndk98z"), "no at sign")
+
 // --- Frames -----------------------------------------------------------------
 
 // A titled top border fills its width exactly, whatever the title.

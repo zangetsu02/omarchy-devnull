@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import "data"
 import "views"
@@ -145,6 +146,30 @@ Item {
     Quickshell.execDetached(["wl-copy", row.url])
     say("Copied link to " + row.hash, false)
   }
+  // A profile's link, for sharing it the way a commit's is shared.
+  function copyProfileLink(username, url) {
+    Quickshell.execDetached(["wl-copy", url || ("https://dev-null.sh/@" + username)])
+    say("Copied link to @" + username, false)
+  }
+
+  // Everyone the loaded feed knows about, for completing an @mention. The
+  // signed API has no suggestion endpoint, so what is on screen is the list.
+  function handlesOnScreen() {
+    var seen = {}
+    var commits = feed.commits || []
+    for (var i = 0; i < commits.length; i++) {
+      var author = commits[i].author || {}
+      if (author.username) seen[author.username] = true
+      var preview = (commits[i].reply_preview || {}).data || []
+      for (var j = 0; j < preview.length; j++) {
+        var inner = preview[j].author || {}
+        if (inner.username) seen[inner.username] = true
+      }
+    }
+    if (root.myUsername) seen[root.myUsername] = true
+    return Object.keys(seen).sort()
+  }
+
   function openProfile(username) { if (username) goTo("profile", username) }
   function openCommit(id) { if (id) goTo("commit", id) }
 
@@ -283,6 +308,15 @@ Item {
     case "reply": if (commit) root.toggleReply(commit.id); break
     case "open": if (commit) root.openOnSite(commit.html_url); break
     case "copy": if (commit) root.copyLink(Model.rowFor(commit)); break
+    case "go": {
+      var where = Model.destinationFor(parsed.arg)
+      if (!where) { root.say("E492: nowhere called " + parsed.arg, true); return }
+      root.goTo(where.page, where.argument)
+      break
+    }
+    case "mute": if (commit) feed.mute(Model.rowFor(commit).username); break
+    case "block": if (commit) feed.block(Model.rowFor(commit).username); break
+    case "report": if (commit) feed.report(commit.id); break
     case "connect": root.connect(); break
     case "quit": root.dismiss(); break
     default: root.say("E492: not an editor command: " + parsed.name, true); return

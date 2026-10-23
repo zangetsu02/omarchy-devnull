@@ -93,6 +93,26 @@ QtObject {
     }
   }
 
+  // Safety, straight through to the bridge: the panel only reports what came
+  // back, because each of these is somebody else's account.
+  function mute(username) {
+    root.run(["mute", username], function (answer) {
+      if (!answer.error) root.replyStatus = "Muted @" + username + "."
+    })
+  }
+
+  function block(username) {
+    root.run(["block", username], function (answer) {
+      if (!answer.error) root.replyStatus = "Blocked @" + username + "."
+    })
+  }
+
+  function report(id) {
+    root.run(["report", id], function (answer) {
+      if (!answer.error) root.replyStatus = "Reported to the moderators."
+    })
+  }
+
   function tick() {
     var calls = Model.tickCalls(root.state())
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
