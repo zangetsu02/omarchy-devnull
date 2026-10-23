@@ -29,7 +29,7 @@ Item {
   // something to commit. It was a column of little rectangles, which is the
   // one place the drawn graph outlived the grid.
   Rail {
-    x: 0
+    x: grid.cell
     y: root.pad
     metrics: grid
     cells: 2
@@ -41,7 +41,7 @@ Item {
 
   Avatar {
     id: avatar
-    x: grid.cell * 2
+    x: grid.cell * 3
     y: root.pad
     size: grid.cell * 2
     source: root.me.avatar_url || ""
@@ -50,7 +50,7 @@ Item {
 
   Column {
     id: column
-    x: grid.cell * 5
+    x: grid.cell * 6
     y: root.pad
     width: root.width - x - Style.space(14)
     spacing: Style.space(8)
@@ -132,7 +132,7 @@ Item {
 
   Rectangle {
     anchors.bottom: parent.bottom
-    x: grid.cell * 5
+    x: grid.cell * 6
     width: root.width - x
     height: 1
     color: root.view.railColor

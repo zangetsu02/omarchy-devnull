@@ -30,7 +30,8 @@ Item {
   Mono {
     id: lane
     width: parent.width
-    y: headGlyph.height
+    horizontalAlignment: Text.AlignHCenter
+    y: 0
     color: root.tailColor
     font.pixelSize: root.metrics.size
     lineHeight: 1.0
@@ -38,15 +39,20 @@ Item {
     textFormat: Text.PlainText
     text: {
       var out = []
-      for (var i = 1; i < root.lines; i++) out.push(root.tail)
+      for (var i = 0; i < root.lines; i++) out.push(root.tail)
       return out.join("\n")
     }
   }
 
+  // The head sits on the lane rather than above it: whatever marks this row —
+  // a node glyph, or the avatar placed at the same column — covers the bar
+  // where it lands, the way a ringed avatar sits on the line on the site.
   Mono {
     id: headGlyph
+    visible: root.head !== ""
     width: parent.width
     height: root.metrics.lineH
+    horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
     color: root.headColor
     font.pixelSize: root.metrics.size

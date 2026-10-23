@@ -35,13 +35,13 @@ Item {
   Metrics { id: grid }
   readonly property real cell: grid.cell
 
-  // The columns, derived rather than written out four times. A reply's head is
-  // `├─╴`, three cells wide, and the avatar used to start inside it and paint
-  // over the arm.
-  readonly property int railCol: topLevel ? 0 : 2
-  readonly property int railCells: topLevel ? 2 : 3
-  readonly property int avatarCol: railCol + railCells
-  readonly property real textCol: grid.cell * (avatarCol + 3)   // avatar(2) + a space
+  // The avatar IS the node: it sits on the lane, ringed in the author's colour,
+  // the way dev-null draws its own graph. So the lane and the avatar share one
+  // two-cell column, and a reply is that column indented, reached by an arm
+  // drawn in the two cells before it.
+  readonly property int gutterCells: 1
+  readonly property int laneCol: gutterCells + depth * 2
+  readonly property real textCol: grid.cell * (laneCol + 4)   // avatar(2) + its ring + a space
 
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
@@ -59,26 +59,39 @@ Item {
   // --- The rail: drawn as a terminal would draw it ----------------------------
 
   Rail {
-    x: grid.cell * root.railCol
+    x: grid.cell * root.laneCol
     y: root.pad
     metrics: grid
-    cells: root.railCells
+    cells: 2
     headColor: root.lane
-    // The lane is what makes it a graph: a neutral grey at 16% alpha is
-    // invisible on a one-pixel glyph stroke.
     tailColor: root.lane
-    head: root.topLevel
-      ? Model.nodeGlyph(root.commit, root.selected)
-      : Model.rail("reply", { last: root.lastReply })
+    // Nothing: the avatar below covers this cell and marks the row itself.
+    // A deleted commit has no avatar, so its tombstone shows through.
+    head: root.row.deleted ? Model.nodeGlyph(root.commit, root.selected) : ""
+  }
+
+  // The arm reaching in from the lane this reply hangs off.
+  Mono {
+    visible: !root.topLevel
+    x: grid.cell * (root.laneCol - 2)
+    y: root.pad
+    width: grid.cell * 2
+    height: grid.cell * 2
+    verticalAlignment: Text.AlignVCenter
+    font.pixelSize: grid.size
+    color: root.lane
+    textFormat: Text.PlainText
+    text: (root.lastReply ? Model.GLYPHS.lastBranch : Model.GLYPHS.branch) + Model.GLYPHS.dash
   }
 
   // --- The commit -------------------------------------------------------------
 
   Avatar {
     id: avatar
-    x: grid.cell * root.avatarCol
+    x: grid.cell * root.laneCol
     y: root.pad
     size: grid.cell * 2
+    ring: root.lane
     source: root.row.deleted ? "" : root.row.avatar
     name: root.row.name
     clickable: !root.row.deleted
