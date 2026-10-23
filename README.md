@@ -23,7 +23,10 @@ taken from the page dev-null already serves to everyone. No empty screen, no
 red line about a key you have not made yet — one `[ connect ]` and the feed
 underneath.
 
-![The log as a commit graph, with link cards and quotes](docs/screenshots/log.png)
+![The log drawn as a terminal draws it: a character rail, one header line per commit, link cards and threads in place](docs/screenshots/log.png)
+
+*Signed out — the real Latest log, read from the page dev-null serves everyone,
+with one `[ connect ]` in the status line.*
 
 | Notifications | A profile |
 |---|---|
