@@ -13,8 +13,15 @@ way `git log --graph` would draw it.
   anyone's profile, with pictures and link cards drawn in place. Star, reply,
   quote, commit and follow without leaving it.
 
-It follows the Omarchy theme for background, text and font, and uses
-dev-null's own palette for the author lanes and the action blue.
+It is drawn as a terminal draws: the commit graph is box-drawing characters
+rather than shapes, a pane names itself in its own top border, and the last two
+rows are a status line and a `:` prompt. It follows the Omarchy theme for
+background, text and font, and uses dev-null's own palette for the author lanes.
+
+**Before you connect it to anything**, it shows the real Latest log, read-only,
+taken from the page dev-null already serves to everyone. No empty screen, no
+red line about a key you have not made yet — one `[ connect ]` and the feed
+underneath.
 
 ![The log as a commit graph, with link cards and quotes](docs/screenshots/log.png)
 
@@ -72,6 +79,33 @@ vertical monitor. The plugin never edits this file for you.
 | `enter` · `O` · `y` | the commit page · open it on the site · copy the link |
 | `g l` `g n` `g s` `g p` | log · notifications · starred · your profile |
 | `⌫` · `R` · `esc` | back · refresh · close |
+| `:` | the command line (below) |
+
+### The command line
+
+`:` is for what a single key does not deserve. It opens a prompt on the last
+row with completion as you type; `Tab` takes the first thing still on offer,
+`enter` runs it and `esc` leaves. Every command is something a key already
+does, so nothing hides behind one.
+
+| Command | What it does |
+|---|---|
+| `:log following` · `:log latest` · `:log trending` | switch log |
+| `:notifications` · `:starred` · `:profile @someone` | go there |
+| `:star` · `:reply` · `:open` · `:copy` | act on the commit under the cursor |
+| `:refresh` · `:connect` · `:quit` | reload · pair this machine · close |
+
+An unknown command answers the way vim does, and `:log` refuses a log that does
+not exist rather than emptying the feed.
+
+### The mouse
+
+It works throughout, the way `mouse=a` works in LazyVim: the keyboard is the
+main road and the mouse never gets its own behaviour. A click **moves the
+cursor**, it does not open — double click is what `enter` is. The wheel
+scrolls, the avatar opens a profile, and a commit's body is selectable: drag
+across it and copy as you would in a terminal. There is no hover state, because
+there is one marker and the mouse moves it.
 
 Click a picture to see it full size; there `←` `→` step through a commit's
 pictures, `enter` opens the one in front in the browser and `esc` closes it.
@@ -148,6 +182,12 @@ once, when you open it, because opening it *is* reading them.
 so it cannot throw away what you scrolled to. Close and reopen the panel to get
 back to the top.
 
+**Signed out shows the real thing.** dev-null is server rendered, so its home
+page carries the whole Latest log as JSON. With no key the plugin reads that,
+derives the short hashes the way the site's own `CommitResource` does, and
+hands the views the same shape the API would have. Read-only: starring and
+replying need the pairing.
+
 **A reply can be held.** dev-null moderates commits from accounts without
 "good reputation", so yours may come back pending. The panel says which; it
 never pretends a held reply is live.
@@ -155,8 +195,14 @@ never pretends a held reply is live.
 ## When it breaks
 
 The icon goes crossed after three refusals in a row from a device that is no
-longer approved, and the panel tells you to run the setup again. A wrong clock
-or a dead network look different on purpose: they say so, and they never send
+longer approved, and the panel tells you to run the setup again. Opening the
+panel then probes once, so a machine you have just re-paired is noticed without
+restarting the shell.
+
+A wrong clock, a dead network and a machine that was never connected all look
+different on purpose. Upstream answers 401 for both a refused device and an
+expired signature, so the plugin reads the error code in the body rather than
+the status: a clock six minutes out says to check the clock, and never sends
 you off to re-pair something that was never broken.
 
 ## Limits
@@ -177,7 +223,8 @@ qml/
   FullPanel.qml    the full client: layout, keys, navigation (entry point)
   data/            Service.qml, Pager.qml and Model.js: state and pure logic
   views/           the client's pages and rows, the composer, the pictures
-  ui/              shared building blocks: Mono, LinkText, ActionButton, Avatar, Picture
+  ui/              shared building blocks: Mono, Metrics, Rail, FrameLine,
+                   LinkText, ActionButton, Avatar, Picture
 scripts/
   devnull          the only thing that talks to dev-null.sh: signs each request, prints JSON
   setup-devnull    pairing, once (with devnull-callback)
@@ -185,8 +232,20 @@ tests/             tests/run, all against a mock of dev-null.sh
 ```
 
 `Model.js` holds every decision that can be made without QML (what to call
-when, how a commit becomes a row, the palette), so node can test it. Rows and
-pages only talk to `FullPanel`; it is the one that knows the service.
+when, how a commit becomes a row, the palette, and the whole character grid —
+the rail glyphs, a header padded to a column count, a frame's border), so node
+can test it. Rows and pages only talk to `FullPanel`; it is the one that knows
+the service.
+
+Two components keep the grid honest. `ui/Metrics.qml` measures one cell and one
+line, once, so nothing measures them again its own way. `ui/Rail.qml` draws the
+graph rail, so the log, the notifications and the bar popup cannot drift apart.
+
+Every glyph the grid draws is declared in one place, `Model.GLYPHS`, because a
+glyph the monospace font lacks falls back to another face at another width and
+shears every line under it. `tests/glyph-test` asks fontconfig who serves each
+one and fails if any answer is not the grid font — which is a thing counting
+code points cannot catch, and did not.
 
 ## Tests
 
@@ -194,5 +253,10 @@ pages only talk to `FullPanel`; it is the one that knows the service.
 tests/run
 ```
 
-Nothing there touches dev-null.sh: `tests/mock-devnull` stands in for it, so no
-test ever posts a real commit.
+Nine files. Nothing there touches dev-null.sh: `tests/mock-devnull` stands in
+for it, so no test ever posts a real commit. The mock verifies the signatures
+it is sent with `ssh-keygen -Y verify`, so a request that would be refused
+upstream is refused here too.
+
+`tests/glyph-test` is the odd one: it asks fontconfig, not node, because
+whether a glyph is one cell wide is a question only the font can answer.
