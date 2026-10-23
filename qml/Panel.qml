@@ -45,6 +45,8 @@ Panel {
 
   // Same dance as the Spotify full player: hide first, summon on the next
   // turn, so Wayland unmaps the old surface before the shell maps it again.
+  function connect() { feed.connect() }
+
   function openFull(page, argument) {
     root.close()
     if (!bar || !bar.shell) return
@@ -139,8 +141,25 @@ Panel {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(8)
-            Mono { anchors.verticalCenter: parent.verticalCenter; text: feed.username !== "" ? "@" + feed.username : ""; color: Color.muted }
+            // Signed out: one control where the handle would be, and nothing
+            // else. The feed underneath is the only argument it needs.
+            Mono {
+              visible: feed.signedOut
+              anchors.verticalCenter: parent.verticalCenter
+              text: "[ connect ]"
+              color: connectHover.hovered ? Color.foreground : root.scheme.lanes[0]
+              font.bold: true
+              HoverHandler { id: connectHover; cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: root.connect() }
+            }
+            Mono {
+              visible: !feed.signedOut
+              anchors.verticalCenter: parent.verticalCenter
+              text: feed.username !== "" ? "@" + feed.username : ""
+              color: Color.muted
+            }
             Avatar {
+              visible: !feed.signedOut
               size: Style.space(22)
               ring: root.scheme.lanes[Model.laneOf({ author: feed.me })]
               source: feed.me.avatar_url || ""
@@ -196,7 +215,6 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             width: openLabel.implicitWidth + Style.space(24)
             height: openLabel.implicitHeight + Style.space(10)
-            radius: Style.space(6)
             color: openArea.containsMouse ? Qt.lighter(root.scheme.primary, 1.12) : root.scheme.primary
             Mono {
               id: openLabel
@@ -220,6 +238,9 @@ Panel {
 
   // --- Building blocks ------------------------------------------------------------
 
+  Metrics { id: grid }
+  readonly property real cell: grid.cell
+
   component SectionLabel: Mono {
     topPadding: Style.space(10)
     bottomPadding: Style.space(2)
@@ -233,8 +254,7 @@ Panel {
     id: area
     signal clicked()
     width: column.width
-    radius: Style.space(6)
-    color: hover.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06) : "transparent"
+    color: "transparent"
     MouseArea {
       id: hover
       anchors.fill: parent
@@ -300,41 +320,31 @@ Panel {
     required property var modelData
     readonly property var row: Model.rowFor(modelData)
     readonly property color lane: root.scheme.lanes[row.lane]
-    readonly property real railWidth: Style.space(22)
     height: content.implicitHeight + Style.space(16)
     onClicked: root.openFull("commit", glance.row.id)
 
-    // The rail runs through every row in each author's lane, like the log.
-    Rectangle {
-      x: glance.railWidth / 2 - 1
-      width: 2
-      height: parent.height
-      color: glance.lane
-      opacity: 0.7
-    }
-    Rectangle {
-      x: glance.railWidth / 2 - width / 2
-      y: Style.space(14)
-      width: Style.space(10)
-      height: width
-      radius: width / 2
-      color: glance.lane
-      border.width: 2
-      border.color: Color.background
+    // The same character rail as the full client, so the two read as one thing.
+    Rail {
+      x: Style.space(6)
+      y: Style.space(8)
+      metrics: grid
+      headColor: glance.lane
+      tailColor: glance.lane
+      head: Model.nodeGlyph(glance.modelData, false)
     }
 
     Avatar {
       id: face
-      x: glance.railWidth + Style.space(4)
+      x: Style.space(6) + grid.cell * 2
       y: Style.space(8)
-      size: Style.space(26)
+      size: root.cell * 2
       source: glance.row.avatar
       name: glance.row.name
     }
 
     Column {
       id: content
-      x: face.x + face.width + Style.space(10)
+      x: face.x + face.width + root.cell
       y: Style.space(8)
       width: glance.width - x - Style.space(8)
       spacing: Style.space(3)
@@ -344,17 +354,20 @@ Panel {
         height: who.implicitHeight
         Mono {
           id: who
-          width: parent.width - hash.implicitWidth - Style.space(8)
+          width: parent.width - age.implicitWidth - grid.cell
+          font.pixelSize: grid.size
+          color: Color.muted
           elide: Text.ElideRight
-          textFormat: Text.StyledText
-          text: "<b>" + root.esc(glance.row.name) + "</b>  "
-            + root.muted(glance.row.handle + " · " + Model.ageFor(glance.row.created, root.now))
+          textFormat: Text.PlainText
+          text: Model.headerLeft(glance.modelData)
         }
         Mono {
-          id: hash
+          id: age
           anchors.right: parent.right
-          text: glance.row.hash
+          font.pixelSize: grid.size
           color: Color.muted
+          textFormat: Text.PlainText
+          text: Model.headerRight(glance.modelData, root.now)
         }
       }
       Mono {

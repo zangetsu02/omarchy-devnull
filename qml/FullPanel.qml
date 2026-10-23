@@ -44,6 +44,9 @@ Item {
   // "log", "notifications", "starred", "profile" or "commit"; the last two
   // take an argument, the username or the commit id.
   property string page: "log"
+  // The command line. NORMAL until `:` opens it; the panel keeps taking keys
+  // only in NORMAL, the way a modal editor does.
+  property bool commandMode: false
   property string profileName: ""
   property string commitId: ""
   property var history: []
@@ -129,6 +132,7 @@ Item {
   }
   function openProfile(username) { if (username) goTo("profile", username) }
   function openCommit(id) { if (id) goTo("commit", id) }
+
   function showImages(images, index) { viewer.show(images, index) }
   function say(text, failed) {
     status = text
@@ -164,6 +168,9 @@ Item {
   // --- Host --------------------------------------------------------------------
 
   function open(payloadJson) {
+    // A window that was closed mid-command must not come back still modal:
+    // the prompt's onVisibleChanged would not re-fire, so nothing would focus it.
+    root.commandMode = false
     var payload = ({})
     try { payload = JSON.parse(String(payloadJson || "{}")) || ({}) } catch (e) {}
     if (shell && shell.bar && typeof shell.bar.hideBarWidget === "function")
@@ -211,7 +218,11 @@ Item {
     "1": function () { root.goTo("log", ""); feed.switchLog("following") },
     "2": function () { root.goTo("log", ""); feed.switchLog("latest") },
     "3": function () { root.goTo("log", ""); feed.switchLog("trending") },
-    "c": function () { root.goTo("log", ""); root.focusComposer() },
+    "c": function () {
+      if (feed.signedOut) { root.say("Not connected. Press : connect", true); return }
+      root.goTo("log", "")
+      root.focusComposer()
+    },
     "R": function () { feed.refresh() }
   })
   // `g` then a letter goes somewhere, as on the site.
@@ -222,8 +233,56 @@ Item {
     "p": function () { root.goTo("profile", root.myUsername) }
   })
 
+  function connect() {
+    feed.connect()
+    root.say("Finish connecting in the terminal that just opened.", false)
+  }
+
+  function leaveCommandMode() {
+    root.commandMode = false
+    scope.forceActiveFocus()
+  }
+
+  // The three logs the service knows. Anything else would clear the feed and
+  // call the CLI with an invented argument.
+  readonly property var logNames: ["following", "latest", "trending"]
+
+  function runCommand(text) {
+    var parsed = Model.parseCommand(text)
+    var commit = activeList ? activeList.selectedCommit : null
+    switch (parsed.name) {
+    case "": break
+    case "log":
+      if (parsed.arg && root.logNames.indexOf(parsed.arg) < 0) {
+        root.say("E474: no such log: " + parsed.arg + " (" + root.logNames.join(", ") + ")", true)
+        return
+      }
+      root.goTo("log", "")
+      if (parsed.arg) feed.switchLog(parsed.arg)
+      break
+    case "notifications": root.goTo("notifications", ""); break
+    case "starred": root.goTo("starred", ""); break
+    case "profile": root.openProfile(parsed.arg.replace(/^@/, "") || root.myUsername); break
+    case "refresh": feed.refresh(); break
+    case "star": if (commit) root.toggleStar(Model.rowFor(commit)); break
+    case "reply": if (commit) root.toggleReply(commit.id); break
+    case "open": if (commit) root.openOnSite(commit.html_url); break
+    case "copy": if (commit) root.copyLink(Model.rowFor(commit)); break
+    case "connect": root.connect(); break
+    case "quit": root.dismiss(); break
+    default: root.say("E492: not an editor command: " + parsed.name, true); return
+    }
+  }
+
   function handleKey(event) {
     if (viewer.handleKey(event)) return true
+    if (root.commandMode) {
+      // The prompt may have lost focus to a click on a body or a field. Escape
+      // has to get out of the mode from here too, or the keyboard is bricked.
+      if (event.key === Qt.Key_Escape) { root.leaveCommandMode(); return true }
+      return false
+    }
+    if (event.text === ":") { root.commandMode = true; return true }
     if (event.key === Qt.Key_Escape) { dismiss(); return true }
     if (event.key === Qt.Key_Backspace) { back(); return true }
     var key = event.key === Qt.Key_Down ? "j" : event.key === Qt.Key_Up ? "k" : event.text
@@ -357,6 +416,9 @@ Item {
             onLoadMore: feed.loadMore()
             header: Composer {
               view: root
+              // Nothing to compose with until this machine is connected, and an
+              // empty avatar over an empty box is a worse invitation than none.
+              visible: !feed.signedOut
               Component.onCompleted: root.composerField = field
             }
           }
@@ -435,7 +497,28 @@ Item {
         padding: Style.space(20)
         spacing: Style.space(10)
 
+        // Signed out there is no "you" to show: an empty avatar over three
+        // zeroes says less than the one control that would change it.
+        Mono {
+          visible: feed.signedOut
+          text: "[ connect ]"
+          color: asideConnect.hovered ? Color.foreground : root.primary
+          font.pixelSize: Style.font.body
+          font.bold: true
+          HoverHandler { id: asideConnect; cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: root.connect() }
+        }
+        Mono {
+          visible: feed.signedOut
+          bottomPadding: Style.space(6)
+          width: aside.width - aside.padding * 2
+          wrapMode: Text.WordWrap
+          color: Color.muted
+          text: "This machine has never been connected. The log below is public."
+        }
+
         Row {
+          visible: !feed.signedOut
           spacing: Style.space(12)
           Avatar {
             size: Style.space(44)
@@ -451,6 +534,7 @@ Item {
           TapHandler { onTapped: root.goTo("profile", root.myUsername) }
         }
         Mono {
+          visible: !feed.signedOut
           textFormat: Text.StyledText
           text: "<b>" + (root.me.commits_count || 0) + "</b>" + root.dimmed(" commits   ")
             + "<b>" + (root.me.following_count || 0) + "</b>" + root.dimmed(" following   ")
@@ -484,29 +568,107 @@ Item {
         view: root
       }
 
-      // --- Status line, like a terminal's last row ------------------------------------
+      // --- Status line and command line, the last two rows of a terminal ----------
 
-      Item {
+      Column {
         id: statusBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: Style.space(28)
-        HLine { anchors.top: parent.top }
-        Mono {
-          x: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - where.implicitWidth - Style.space(40)
-          elide: Text.ElideRight
-          text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
-          color: root.statusFailed ? root.destructive : Color.foreground
+
+        // What `:` offers, above the prompt, the way a completion popup sits.
+        Column {
+          id: completions
+          width: parent.width
+          visible: root.commandMode && Model.commandsFor(prompt.text).length > 0
+          Repeater {
+            model: root.commandMode ? Model.commandsFor(prompt.text) : []
+            Mono {
+              required property var modelData
+              leftPadding: Style.space(14)
+              topPadding: 1
+              bottomPadding: 1
+              width: completions.width
+              textFormat: Text.StyledText
+              text: "<font color='" + root.primary + "'>:" + root.esc(modelData.name) + "</font>"
+                + root.dimmed("   " + modelData.help)
+            }
+          }
         }
-        Mono {
-          id: where
-          anchors.right: parent.right
-          anchors.rightMargin: Style.space(14)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.StyledText
-          text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page === "commit" && commitPage.focused ? "commit " + commitPage.focused.short_hash : root.page) + "</font>"
-            + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
+
+        Item {
+          width: parent.width
+          height: Style.space(28)
+          HLine { anchors.top: parent.top }
+
+          Mono {
+            id: mode
+            x: Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            text: "NORMAL"
+            color: root.laneColor(3)
+            font.bold: true
+          }
+          Mono {
+            x: mode.x + mode.implicitWidth + Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            width: parent.width - x - where.implicitWidth - Style.space(40)
+            elide: Text.ElideRight
+            text: root.status !== "" ? root.status : (root.awaitingG ? "g…" : "")
+            color: root.statusFailed ? root.destructive : Color.foreground
+          }
+          // Signed out: one control, no explanation. The feed below is the
+          // argument; a line about what you are missing would only nag.
+          Mono {
+            id: connectButton
+            visible: feed.signedOut && !root.commandMode
+            anchors.right: where.left
+            anchors.rightMargin: Style.space(18)
+            anchors.verticalCenter: parent.verticalCenter
+            text: "[ connect ]"
+            color: connectHover.hovered ? Color.foreground : root.primary
+            font.bold: true
+            HoverHandler { id: connectHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: root.connect() }
+          }
+
+          Mono {
+            id: where
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(14)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.commandMode
+            textFormat: Text.StyledText
+            text: "<font color='" + root.primary + "'>" + root.esc(root.page === "profile" ? "@" + root.profileName : root.page === "log" ? feed.log : root.page === "commit" && commitPage.focused ? "commit " + commitPage.focused.short_hash : root.page) + "</font>"
+              + root.dimmed(feed.updatedAt !== "" ? "  ·  updated " + Model.ageFor(feed.updatedAt, root.now) : "")
+          }
+
+          // The prompt takes the whole row while it is open, as it does in vim.
+          Row {
+            anchors.verticalCenter: parent.verticalCenter
+            x: Style.space(14)
+            width: parent.width - Style.space(28)
+            visible: root.commandMode
+            spacing: 0
+            Mono { text: ":"; color: Color.foreground }
+            TextField {
+              id: prompt
+              width: parent.width - Style.space(10)
+              background: null
+              padding: 0
+              color: Color.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              onAccepted: { var line = text; root.leaveCommandMode(); root.runCommand(line) }
+              Keys.onEscapePressed: root.leaveCommandMode()
+              // Tab takes the first thing still on offer, as a shell would.
+              Keys.onTabPressed: {
+                var offers = Model.commandsFor(text)
+                if (offers.length > 0) text = offers[0].name + " "
+              }
+            }
+          }
         }
       }
     }

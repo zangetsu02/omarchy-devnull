@@ -38,26 +38,26 @@ Item {
     endLine: Model.listEnd({ loading: conversation.loading, error: conversation.error, count: conversation.items.length,
                              end: root.focused ? root.focused.short_hash + " · " + Model.plural(root.focused.replies_count || 0, "reply", "replies") : "",
                              empty: "fatal: that commit is not there any more" })
+    // The pane names itself in its own top border, as a box-drawn pane does.
     header: Item {
       width: list.width
-      height: Style.space(56)
-      Row {
-        x: Style.space(20)
+      height: Style.space(34)
+      FrameLine {
+        x: Style.space(14)
+        width: parent.width - Style.space(28)
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Style.space(10)
-        Mono { text: "Commit"; font.pixelSize: Style.font.subtitle + 2; font.bold: true }
-        Mono { anchors.verticalCenter: parent.verticalCenter; text: root.focused ? root.focused.short_hash : ""; color: Color.muted }
+        lineColor: root.view.railColor
+        title: root.focused ? "commit " + root.focused.short_hash : "commit"
       }
       ActionButton {
         anchors.right: parent.right
-        anchors.rightMargin: Style.space(14)
+        anchors.rightMargin: Style.space(20)
         anchors.verticalCenter: parent.verticalCenter
         visible: !!root.focused
         icon: "↗"
-        label: "on the site"
+        label: "O  on the site"
         onClicked: root.view.openOnSite(root.focused.html_url)
       }
-      Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.view.railColor }
     }
   }
 }

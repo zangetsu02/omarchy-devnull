@@ -66,8 +66,10 @@ USER_AGENT = f"omarchy-devnull/{plugin_version()}"
 
 # Only device_not_approved means the pairing is gone. invalid_signature shares
 # its 401 and usually means the clock is off, which re-pairing would not fix.
+# device_not_approved is the one kind that depends on local state: the same
+# refusal means "revoked" to a machine that was paired and "never finished the
+# setup" to one that was not.
 KINDS = {
-    "device_not_approved": "auth",
     "invalid_signature": "expired",
     "commit_rules_required": "rules",
     "rate_limited": "limited",
@@ -93,7 +95,10 @@ def sign(message, key_path=None):
     """An armored SSH signature over the message, in the devnull-api namespace."""
     key_path = Path(key_path or KEY)
     if not key_path.exists():
-        raise BridgeError(f"No key at {key_path}. Run scripts/setup-devnull.", "auth")
+        # Never connected is not a refused device: the panel offers the
+        # connection rather than telling anyone something broke.
+        raise BridgeError("This machine has never been connected to dev-null. "
+                          "Run scripts/setup-devnull.", "unpaired")
     old_umask = os.umask(0o077)
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,16 +121,31 @@ def header_signature(armored):
     return re.sub(r"\s+|-----(BEGIN|END) SSH SIGNATURE-----", "", armored)
 
 
-def classify(status, code, message):
-    """Which kind of failure this is. The body's code decides, not the status."""
+def ever_paired():
+    """Whether a pairing ever finished here. `pair` writes device.json last, so
+    a key without it means the setup was started and never approved."""
+    return (HOME / "device.json").exists()
+
+
+def classify(status, code, message, paired=None):
+    """Which kind of failure this is. The body's code decides, not the status.
+
+    `paired` is whether a pairing ever finished here; the same refusal means a
+    revoked device to a machine that was paired and an unfinished setup to one
+    that was not. It is a parameter so this stays a pure function.
+    """
+    if paired is None:
+        paired = ever_paired()
     if status is None:
         return "network"
+    if code == "device_not_approved":
+        return "auth" if paired else "unpaired"
     if code in KINDS:
         return KINDS[code]
     if "signature expired" in (message or "").lower():
         return "expired"
     if status == 401:
-        return "auth"
+        return "auth" if paired else "unpaired"
     return "http"
 
 
@@ -190,8 +210,73 @@ def page(path, cursor):
     return answer.get("data", []), answer.get("meta", {}).get("next_cursor") or answer.get("next_cursor")
 
 
+def public_feed():
+    """The Latest log with no key at all.
+
+    dev-null is server rendered, so its home page carries the whole log as JSON
+    in its Inertia props. The page names things differently from the API — the
+    author is `user`, and there is no short_hash or html_url — so those are
+    derived here the way CommitResource derives them, and one shape reaches the
+    panel whichever door the commits came through.
+    """
+    request = urllib.request.Request(
+        BASE_URL + "/", headers={"Accept": "text/html", "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            page_html = response.read().decode(errors="replace")
+    except urllib.error.HTTPError as error:
+        # A refusal from the site is not a dead network, and must not read as one.
+        message = f"dev-null answered {error.code} for its home page."
+        raise BridgeError(message, classify(error.code, None, message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(getattr(error, "reason", error)), "network") from error
+
+    found = re.search(r'data-page="app" type="application/json">(.*?)</script>',
+                      page_html, re.S)
+    if not found:
+        raise BridgeError("dev-null's home page did not carry its feed.", "http")
+    try:
+        commits = json.loads(found.group(1))["props"]["commits"]
+    except (ValueError, KeyError) as error:
+        raise BridgeError(f"Could not read the public feed: {error}", "http") from error
+
+    return {
+        "commits": [normalize_public(c) for c in commits.get("data", [])],
+        "next_cursor": commits.get("next_cursor"),
+        "public": True,
+    }
+
+
+def normalize_public(commit):
+    """What CommitResource would have sent, from what the page carries.
+
+    The page names the author `user` at EVERY depth, so this owns the nested
+    commits too: a reply preview or a quote left unconverted draws as "@?".
+    """
+    if not commit:
+        return commit
+    author = commit.get("user") or commit.get("author") or {}
+    plain = str(commit.get("id") or "").replace("-", "")
+    short = plain[-7:] if len(plain) >= 7 else plain
+    out = dict(commit)
+    out["author"] = author
+    out.setdefault("short_hash", short)
+    if not out.get("html_url") and author.get("username") and short:
+        out["html_url"] = f"{BASE_URL}/@{author['username']}/commits/{short}"
+
+    if out.get("quoted_commit"):
+        out["quoted_commit"] = normalize_public(out["quoted_commit"])
+    preview = out.get("reply_preview") or {}
+    if preview.get("data"):
+        out["reply_preview"] = dict(
+            preview, data=[normalize_public(reply) for reply in preview["data"]])
+    return out
+
+
 def cmd_feed(*args):
-    """A log: latest (default), following or trending."""
+    """A log: latest (default), following or trending. --public needs no key."""
+    if "--public" in args:
+        return public_feed()
     args, cursor = paged(args)
     log = "latest"
     if len(args) == 2 and args[0] == "--log":

@@ -24,51 +24,22 @@ Item {
   // under everything, and the MouseAreas above take their own clicks first.
   Clickable { id: rowArea; anchors.fill: parent; onClicked: root.openTarget() }
 
-  // The whole row lights up: it is one click away from where it leads.
-  Rectangle {
-    anchors.fill: parent
-    anchors.leftMargin: root.railWidth
-    visible: rowArea.containsMouse
-    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
-  }
-
   function openTarget() {
     var target = Model.noticeTarget(root.notice, root.view.myUsername)
     if (target) root.view.goTo(target.page, target.argument)
   }
 
-  Rectangle {
-    x: root.railWidth / 2 - 1
-    width: 2
-    height: root.height
-    color: root.view.railColor
-  }
+  Metrics { id: grid }
 
-  Rectangle {
-    x: root.railWidth / 2 - width / 2
+  // The same rail the log draws, so the two pages read as one program. An
+  // unread notice is the filled node; a read one is hollow.
+  Rail {
+    x: root.railWidth / 2 - grid.cell
     y: root.pad
-    width: Style.space(30)
-    height: width
-    radius: width / 2
-    color: Color.background
-    // Unread on this visit: the node rings in the action blue, as on the site.
-    border.width: 2
-    border.color: root.notice.unread ? root.view.primary : root.view.railColor
-    Mono {
-      anchors.centerIn: parent
-      text: root.notice.icon
-      color: root.tint
-      font.pixelSize: Style.font.body
-      font.bold: true
-    }
-  }
-
-  Rectangle {
-    anchors.bottom: parent.bottom
-    x: root.railWidth
-    width: root.width - x
-    height: 1
-    color: root.view.railColor
+    metrics: grid
+    headColor: root.notice.unread ? root.tint : root.view.railColor
+    tailColor: root.tint
+    head: root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
   }
 
   Column {
@@ -127,6 +98,9 @@ Item {
         color: Color.muted
         font.pixelSize: Style.font.body
       }
+      // The icon used to be the node; the node is the unread mark now, so the
+      // kind of notification says itself here instead.
+      Mono { text: root.notice.icon; color: root.tint; font.pixelSize: Style.font.body }
       Mono { text: root.notice.verb; font.pixelSize: Style.font.body }
     }
 
@@ -136,8 +110,7 @@ Item {
       width: body.width
       height: theirs.implicitHeight + Style.space(8)
       x: -Style.space(6)
-      radius: Style.space(6)
-      color: theirsArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.07) : "transparent"
+      color: "transparent"
       Mono {
         id: theirs
         x: Style.space(6)
@@ -145,7 +118,7 @@ Item {
         width: parent.width - Style.space(12)
         text: root.notice.body
         font.pixelSize: Style.font.body
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: 4
         elide: Text.ElideRight
       }
@@ -156,10 +129,9 @@ Item {
       visible: !root.notice.theirs && root.notice.body !== ""
       width: body.width
       height: own.implicitHeight + Style.space(12)
-      color: ownArea.containsMouse ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05) : "transparent"
+      color: "transparent"
       border.width: 1
-      border.color: ownArea.containsMouse ? Color.muted : root.view.railColor
-      radius: Style.space(6)
+      border.color: root.view.railColor
       Mono {
         id: own
         x: Style.space(10)
@@ -167,7 +139,7 @@ Item {
         width: parent.width - Style.space(20)
         text: root.notice.body
         color: Color.muted
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: 3
         elide: Text.ElideRight
       }

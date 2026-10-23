@@ -162,7 +162,6 @@ Column {
         required property var modelData
         width: badgeRow.implicitWidth + Style.space(14)
         height: badgeRow.implicitHeight + Style.space(8)
-        radius: Style.space(5)
         color: "transparent"
         border.width: 1
         border.color: modelData.unlocked ? Color.muted : root.view.railColor
@@ -195,7 +194,6 @@ Column {
     y: -height - 4
     width: tip.implicitWidth + Style.space(12)
     height: tip.implicitHeight + Style.space(6)
-    radius: Style.space(4)
     color: Color.background
     border.width: 1
     border.color: Color.muted

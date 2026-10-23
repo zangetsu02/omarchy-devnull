@@ -25,12 +25,21 @@ def main():
     home = Path(tmp.name)
     subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
                     "-f", str(home / "id_ed25519")], check=True)
+    # A machine that finished pairing: `pair` writes this last, and the bridge
+    # reads it to tell a revoked device from a setup that never got approved.
+    (home / "device.json").write_text('{"username": "zangetsu02"}')
     state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
     environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
 
     def run(*args):
         result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
                                 env=environment)
+        return json.loads(result.stdout or "{}"), result.returncode
+
+    def run_in(home_dir, *args):
+        """Same, with a state directory that holds no key at all."""
+        result = subprocess.run([str(BRIDGE), *args], capture_output=True, text=True,
+                                env=dict(environment, DEVNULL_HOME=home_dir))
         return json.loads(result.stdout or "{}"), result.returncode
 
     try:
@@ -106,6 +115,55 @@ def main():
         state.next_response = {"code": "device_not_approved", "message": "Not approved."}
         answer, code = run("me")
         assert code == 1 and answer["kind"] == "auth" and answer["error"] == "Not approved."
+
+        # The public feed: no key, no signature, the same shape as the API one.
+        public, code = run_in(tempfile.gettempdir() + "/devnull-nokey", "feed", "--public")
+        assert code == 0, public
+        assert public["commits"][0]["short_hash"] == "02b4a24"
+        assert public["commits"][0]["author"]["username"] == "zangetsu02"
+        assert public["commits"][0]["html_url"].endswith("/@zangetsu02/commits/02b4a24")
+        assert public["next_cursor"] == mock_module.CURSOR
+        # The page names the author `user` at every depth. An adapter that
+        # converts only the top level leaves every inline reply drawing "@?".
+        first = public["commits"][0]
+        reply = first["reply_preview"]["data"][0]
+        assert reply["author"]["username"] == "pptx704", reply
+        assert reply["short_hash"] == reply["id"].replace("-", "")[-7:], reply["short_hash"]
+        assert reply["html_url"].endswith("/@pptx704/commits/" + reply["short_hash"])
+        quoted = first["quoted_commit"]
+        assert quoted["author"]["username"] == "ndk98z", quoted
+        assert quoted["short_hash"] and quoted["html_url"]
+
+        # It really went unsigned: it never joined the signed-call list.
+        assert state.public_calls == 1
+        assert state.last_uri == "/"
+
+        # A key the setup made but never got approved is NOT "paired any more":
+        # it was never paired at all. device.json is written only by a pairing
+        # that finished, so its absence is what tells the two apart.
+        half = tempfile.TemporaryDirectory()
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                        "-f", str(Path(half.name) / "id_ed25519")], check=True)
+        state.next_status = 401
+        state.next_response = {"code": "device_not_approved", "message": "This key isn't approved."}
+        answer, code = run_in(half.name, "me")
+        assert code == 1 and answer["kind"] == "unpaired", answer
+
+        # With device.json beside it, the same refusal really does mean revoked.
+        (Path(half.name) / "device.json").write_text('{"username": "zangetsu02"}')
+        state.next_status = 401
+        state.next_response = {"code": "device_not_approved", "message": "This key isn't approved."}
+        answer, code = run_in(half.name, "me")
+        assert code == 1 and answer["kind"] == "auth", answer
+        half.cleanup()
+
+        # Never paired is its own kind: the panel must not call it an error nor
+        # count it toward "re-pair me". A missing key is not a refused device.
+        bare_home = tempfile.TemporaryDirectory()
+        answer, code = run_in(bare_home.name, "me")
+        assert code == 1 and answer["kind"] == "unpaired", answer
+        assert "setup-devnull" in answer["error"]
+        bare_home.cleanup()
 
         print("read: all checks passed")
     finally:

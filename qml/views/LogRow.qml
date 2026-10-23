@@ -4,9 +4,11 @@ import qs.Commons
 import "../ui"
 import "../data/Model.js" as Model
 
-// One commit as `git log --graph` would print it: a rail in the author's lane,
-// the avatar, who and when, the body, and a row of actions. Replies use the
-// same row one level in, behind a guide line instead of the rail, and nest
+// One commit as `git log --graph` prints it, drawn the way a terminal would:
+// the rail is characters in the author's lane, then the avatar in two cells,
+// one header line — hash and handle left, age and counts anchored right — the
+// body, and the actions.
+// Replies are the same row one level in, closing the rail with ╰, and nest
 // through a Loader of this same file.
 //
 // It only talks to `view` (FullPanel): the palette and every action go
@@ -18,74 +20,80 @@ Item {
   required property var view
   property int depth: 0
   property bool selected: false
-  // The lane of the commit drawn above, for the rail segment over the node.
-  property color laneAbove: view.railColor
+  // Set by the row above when this is the last reply in its thread: it decides
+  // whether the rail closes with ╰ or carries on with ├.
+  property bool lastReply: false
 
   readonly property var row: Model.rowFor(commit)
   readonly property color lane: view.laneColor(row.lane)
   readonly property bool topLevel: depth === 0
   readonly property var thread: view.threadFor(row.id)
-  readonly property real railWidth: topLevel ? Style.space(34) : Style.space(18)
-  readonly property real avatarSize: topLevel ? Style.space(34) : Style.space(24)
   readonly property real pad: topLevel ? Style.space(12) : Style.space(6)
-  readonly property real gutter: Style.space(10)
+
+  // The grid. Every column below is a whole number of these, so the rail, the
+  // avatar and the text start on the same boundary on every line.
+  Metrics { id: grid }
+  readonly property real cell: grid.cell
+
+  // The avatar IS the node: it sits on the lane, ringed in the author's colour,
+  // the way dev-null draws its own graph. So the lane and the avatar share one
+  // two-cell column, and a reply is that column indented, reached by an arm
+  // drawn in the two cells before it.
+  readonly property int gutterCells: 1
+  readonly property int laneCol: gutterCells + depth * 2
+  readonly property real textCol: grid.cell * (laneCol + 4)   // avatar(2) + its ring + a space
 
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
-  // Selected: a wash and a bar in the action blue, the way the site marks focus.
+
+  // The cursor line, and nothing else. One marker: the filled node in the rail
+  // says which row, this says it again quietly across the width. A bar beside
+  // it was a third way of saying the same thing.
   Rectangle {
     anchors.fill: parent
-    anchors.leftMargin: root.railWidth
+    anchors.leftMargin: root.textCol
     visible: root.selected
-    color: Qt.rgba(root.view.primary.r, root.view.primary.g, root.view.primary.b, 0.07)
-    Rectangle { width: 2; height: parent.height; color: root.view.primary }
+    color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.05)
   }
 
-  // --- The rail ---------------------------------------------------------------
+  // --- The rail: drawn as a terminal would draw it ----------------------------
 
-  RailSegment { visible: root.topLevel; height: node.y; color: root.laneAbove }
-  RailSegment { visible: root.topLevel; y: node.y + node.height; height: root.height - y; color: root.lane }
-
-  Rectangle {
-    id: node
-    visible: root.topLevel
-    x: root.railWidth / 2 - width / 2
-    y: root.pad + root.avatarSize / 2 - height / 2
-    width: Style.space(12)
-    height: width
-    radius: width / 2
-    // A deleted commit keeps its place as a hollow node, like a tombstone.
-    color: root.row.deleted ? Color.background : root.lane
-    border.width: 2
-    border.color: root.row.deleted ? root.view.railColor : Color.background
+  Rail {
+    x: grid.cell * root.laneCol
+    y: root.pad
+    metrics: grid
+    cells: 2
+    headColor: root.lane
+    tailColor: root.lane
+    // Nothing: the avatar below covers this cell and marks the row itself.
+    // A deleted commit has no avatar, so its tombstone shows through.
+    head: root.row.deleted ? Model.nodeGlyph(root.commit, root.selected) : ""
   }
 
-  // Replies hang off a plain guide line, the way the site indents a thread.
-  Rectangle {
+  // The arm reaching in from the lane this reply hangs off.
+  Mono {
     visible: !root.topLevel
-    x: Style.space(6)
-    width: 1
-    height: root.height
-    color: root.view.railColor
-  }
-
-  // Rows are split by a hairline that starts after the rail, so the graph runs on.
-  Rectangle {
-    visible: root.topLevel
-    anchors.bottom: parent.bottom
-    x: root.railWidth
-    width: root.width - x
-    height: 1
-    color: root.view.railColor
+    x: grid.cell * (root.laneCol - 2)
+    y: root.pad
+    width: grid.cell * 2
+    height: grid.cell * 2
+    verticalAlignment: Text.AlignVCenter
+    font.pixelSize: grid.size
+    color: root.lane
+    textFormat: Text.PlainText
+    text: (root.lastReply ? Model.GLYPHS.lastBranch : Model.GLYPHS.branch) + Model.GLYPHS.dash
   }
 
   // --- The commit -------------------------------------------------------------
 
   Avatar {
     id: avatar
-    x: root.railWidth + Style.space(4)
+    // Centred on the lane, not on its column: the ring and its gap add four
+    // pixels a side, which is exactly how far off centre it sat before.
+    x: grid.cell * root.laneCol + grid.cell - implicitWidth / 2
     y: root.pad
-    size: root.avatarSize
+    size: grid.cell * 2
+    ring: root.lane
     source: root.row.deleted ? "" : root.row.avatar
     name: root.row.name
     clickable: !root.row.deleted
@@ -94,71 +102,53 @@ Item {
 
   Column {
     id: body
-    x: avatar.x + avatar.width + root.gutter
+    x: root.textCol
     y: root.pad
     width: root.width - x - Style.space(14)
     spacing: Style.space(4)
 
-    // Name and handle lead to the profile, the age and the hash to the commit,
-    // as on the site; each underlines under the pointer.
+    // The header: hash and handle on the left, age and counts anchored right.
+    // Nothing here is padded — QML anchors, and anchors cannot drift.
     Item {
       width: body.width
-      height: who.implicitHeight
-      Row {
-        id: who
-        spacing: Style.space(6)
-        width: parent.width - hash.implicitWidth - Style.space(8)
-        Mono {
-          visible: root.row.deleted
-          text: "[deleted]"
-          color: Color.muted
-          font.pixelSize: Style.font.body
-          font.bold: true
-        }
-        LinkText {
-          id: nameText
-          visible: !root.row.deleted
-          text: root.row.name
-          font.pixelSize: Style.font.body
-          font.bold: true
-          elide: Text.ElideRight
-          onClicked: root.view.openProfile(root.row.username)
-        }
-        LinkText {
-          visible: !root.row.deleted
-          anchors.baseline: nameText.baseline
-          text: root.row.handle
-          restColor: Color.muted
-          onClicked: root.view.openProfile(root.row.username)
-        }
-        Mono { visible: !root.row.deleted; anchors.baseline: nameText.baseline; text: "·"; color: Color.muted }
-        LinkText {
-          visible: !root.row.deleted
-          anchors.baseline: nameText.baseline
-          text: Model.ageFor(root.row.created, root.view.now) + (root.row.pending ? " · held" : "")
-          restColor: Color.muted
-          onClicked: root.view.openCommit(root.row.id)
-        }
+      height: hashLine.implicitHeight
+
+      Mono {
+        id: hashLine
+        width: parent.width - counts.implicitWidth - grid.cell * 2
+        font.pixelSize: grid.size
+        color: root.selected ? Color.foreground : Color.muted
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: root.row.deleted ? "[deleted]" : Model.headerLeft(root.commit)
       }
-      LinkText {
-        id: hash
+
+      Mono {
+        id: counts
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.row.hash
-        restColor: Color.muted
-        hoverColor: root.view.primary
-        onClicked: root.view.openCommit(root.row.id)
+        font.pixelSize: grid.size
+        color: Color.muted
+        textFormat: Text.PlainText
+        text: root.row.deleted ? "" : Model.headerRight(root.commit, root.view.now)
       }
     }
 
-    Mono {
+    // Selectable, the way text in a terminal is. A drag here selects rather
+    // than moving the cursor; a click anywhere else on the row still moves it.
+    TextEdit {
       width: body.width
       visible: text !== ""
+      readOnly: true
+      selectByMouse: true
+      persistentSelection: false
       text: root.row.deleted ? "This commit was deleted." : root.row.body
       color: root.row.deleted ? Color.muted : Color.foreground
+      selectionColor: Qt.rgba(root.view.primary.r, root.view.primary.g, root.view.primary.b, 0.35)
+      selectedTextColor: Color.foreground
+      font.family: Style.font.family
       font.pixelSize: Style.font.body
-      lineHeight: 1.3
-      wrapMode: Text.WrapAnywhere
+      textFormat: TextEdit.PlainText
+      wrapMode: TextEdit.Wrap
     }
 
     Box {
@@ -249,8 +239,12 @@ Item {
         width: body.width
         height: item ? item.implicitHeight : 0
         // Required properties are set at creation, so the source is set here.
+        required property int index
+        readonly property int siblings: root.thread ? root.thread.replies.length
+                                                    : (root.topLevel ? root.row.preview.length : 0)
         Component.onCompleted: setSource("LogRow.qml", {
-          commit: modelData, view: root.view, depth: Math.min(root.depth + 1, 3), width: body.width
+          commit: modelData, view: root.view, depth: Math.min(root.depth + 1, 3),
+          width: body.width, lastReply: index === siblings - 1
         })
         onWidthChanged: if (item) item.width = width
       }
@@ -265,11 +259,6 @@ Item {
 
   // --- Building blocks ----------------------------------------------------------
 
-  component RailSegment: Rectangle {
-    x: root.railWidth / 2 - 1
-    width: 2
-  }
-
   // A quoted commit or a link card: a bordered box, as on the site, with the
   // card's picture on the left when it has one.
   component Box: Rectangle {
@@ -282,10 +271,9 @@ Item {
     readonly property real inset: Style.space(10)
     width: body.width
     height: Math.max(boxColumn.implicitHeight, thumb.visible ? thumb.height : 0) + inset * 1.4
-    color: boxHover.hovered ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04) : "transparent"
+    color: "transparent"
     border.width: 1
-    border.color: boxHover.hovered ? Color.muted : root.view.railColor
-    radius: Style.space(6)
+    border.color: root.view.railColor
     Picture {
       id: thumb
       visible: box.image !== ""
@@ -306,7 +294,7 @@ Item {
       Mono {
         width: parent.width
         text: box.text
-        wrapMode: Text.WrapAnywhere
+        wrapMode: Text.Wrap
         maximumLineCount: box.lines
         elide: Text.ElideRight
       }

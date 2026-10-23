@@ -26,6 +26,9 @@ QtObject {
   property string updatedAt: ""
   property bool loading: true
   property bool broken: false
+  // Never connected. Not a failure: the panel reads the public feed and offers
+  // the connection, rather than showing a red line about a key nobody made yet.
+  property bool signedOut: false
   property string lastError: ""
   property bool panelOpen: false
 
@@ -33,6 +36,14 @@ QtObject {
   // True once older pages were loaded: the timer then leaves the feed alone
   // rather than replacing everything scrolled to with page one.
   property bool expanded: false
+  readonly property string _setupPath: Qt.resolvedUrl("../../scripts/setup-devnull").toString().replace("file://", "")
+
+  // Connecting means running the setup, which needs a browser and a terminal.
+  // Both panels ask here rather than each knowing the path.
+  function connect() {
+    Quickshell.execDetached(["omarchy-launch-terminal", root._setupPath])
+  }
+
   property string _scriptPath: Qt.resolvedUrl("../../scripts/devnull").toString().replace("file://", "")
 
   property Timer _timer: Timer {
@@ -54,9 +65,17 @@ QtObject {
       if (answer && answer.error) {
         root._authFailures = Model.nextFailureCount(root._authFailures, answer)
         root.broken = Model.isBroken(root._authFailures)
+        var wasSignedOut = root.signedOut
+        root.signedOut = answer.kind === "unpaired"
         root.lastError = Model.errorLine(answer)
+        // Found out just now: fetch the public feed at once rather than leaving
+        // the panel blank until the next tick.
+        if (root.signedOut && !wasSignedOut) root.dispatch("publicFeed")
       } else {
         root._authFailures = Model.nextFailureCount(root._authFailures, null)
+        // The public feed needs no key, so its success proves nothing about
+        // pairing: only a signed call can say this machine is connected.
+        if (!answer.public) root.signedOut = false
         root.lastError = ""
       }
       if (done) done(answer)
@@ -64,8 +83,18 @@ QtObject {
     process.running = true
   }
 
+  // Where the panel stands, as one value, so the rules can be asked in one way.
+  function state() {
+    return {
+      panelOpen: root.panelOpen,
+      broken: root.broken,
+      expanded: root.expanded,
+      signedOut: root.signedOut
+    }
+  }
+
   function tick() {
-    var calls = Model.tickCalls(root.panelOpen, root.broken, root.expanded)
+    var calls = Model.tickCalls(root.state())
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
   }
 
@@ -92,6 +121,15 @@ QtObject {
         }
         root.loading = false
       })
+    } else if (name === "publicFeed") {
+      root.run(["feed", "--public"], function (answer) {
+        if (!answer.error) {
+          root.commits = answer.commits || []
+          root.nextCursor = ""          // paging the public page is not offered
+          root.expanded = false
+        }
+        root.loading = false
+      })
     } else if (name === "notifications") {
       root.run(["notifications"], function (answer) {
         if (!answer.error) {
@@ -109,7 +147,7 @@ QtObject {
     // Broken, this is a single probe: a successful answer clears the failure
     // count, so re-pairing is noticed without restarting the shell.
     var wasBroken = root.broken
-    var calls = Model.openCalls(root.broken)
+    var calls = Model.openCalls(root.state())
     for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     if (wasBroken) root.recoveryCheck.restart()
   }
@@ -118,7 +156,7 @@ QtObject {
   property Timer recoveryCheck: Timer {
     interval: 1500
     onTriggered: if (!root.broken && root.panelOpen) {
-      var calls = Model.openCalls(false)
+      var calls = Model.openCalls({ signedOut: root.signedOut })
       for (var i = 0; i < calls.length; i++) root.dispatch(calls[i])
     }
   }

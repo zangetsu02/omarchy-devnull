@@ -158,19 +158,30 @@ function pollDelay(panelOpen, settings) {
 // does, so it must not count.
 var BROKEN_AFTER = 3
 
-function tickCalls(panelOpen, broken, expanded) {
-    if (broken) return []
+// What to call on a tick, given where the panel stands. The state arrives as
+// one named object rather than a row of booleans, so a call site reads as a
+// sentence instead of `tickCalls(a, b, c, d)`.
+//
+// state: { panelOpen, broken, expanded, signedOut }
+function tickCalls(state) {
+    var s = state || {}
+    // Never paired: the home page carries the whole Latest log as JSON, with no
+    // signature, so the panel shows the real thing instead of an empty screen.
+    if (s.signedOut) return ["publicFeed"]
+    if (s.broken) return []
     // Closed, only /me: it carries the unread count without marking anything read.
-    if (!panelOpen) return ["me"]
+    if (!s.panelOpen) return ["me"]
     // Once older pages are loaded, refreshing would replace everything scrolled
     // to with page one. The feed waits until the panel is opened again.
-    return expanded ? [] : ["feed"]
+    return s.expanded ? [] : ["feed"]
 }
 
-function openCalls(broken) {
+function openCalls(state) {
+    var s = state || {}
+    if (s.signedOut) return ["publicFeed"]
     // Broken, one probe: it costs nothing and it is how a re-pair gets noticed
     // without restarting the shell.
-    if (broken) return ["me"]
+    if (s.broken) return ["me"]
     // The one place notifications are listed, which is also what marks them read.
     return ["notifications", "feed"]
 }
@@ -201,6 +212,8 @@ function clearDraft(drafts, id) {
 
 function nextFailureCount(count, result) {
     if (!result) return 0
+    // Only a device the server refuses counts. Never having paired is not a
+    // failure, and neither is a wrong clock or a dead network.
     if (result.kind === "auth") return count + 1
     return count
 }
@@ -212,6 +225,10 @@ function isBroken(count) {
 function errorLine(result) {
     if (!result) return ""
     switch (result.kind) {
+    case "unpaired":
+        // Not an error: this machine has simply never been connected. The panel
+        // offers the connection itself; a red line would only be in the way.
+        return ""
     case "expired":
         return "dev-null refused the signature. Check this machine's clock."
     case "auth":
@@ -436,4 +453,94 @@ function activitySummary(activity) {
     var total = ((activity && activity.buckets) || []).reduce(function (sum, b) { return sum + (b.count || 0) }, 0)
     if (total === 0) return "No commits yet"
     return plural(total, "commit") + " in " + (WINDOWS[(activity && activity.scale) || "day"] || WINDOWS.day)
+}
+
+// --- The character grid ------------------------------------------------------
+//
+// The log is drawn as a terminal would draw it, so the rail is characters
+// rather than rectangles. Every glyph here is one column wide: a two-cell one
+// would shear every line beneath it.
+
+// Every glyph the grid draws, in one place, so tests/glyph-test can ask
+// fontconfig who serves each one. A glyph the monospace font lacks falls back
+// to another face at another width and shears every line under it — which is
+// why the counters are Nerd Font private-use points and not ★ ☆ ⤷.
+var GLYPHS = {
+    node: "○", nodeHere: "●", nodeGone: "◌",
+    bar: "│", dottedBar: "┆", branch: "├", lastBranch: "╰", dash: "─", arm: "╴",
+    topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
+    star: "\u{f04ce}", unstarred: "\u{f04d2}", replies: "\u{f045a}",
+    ellipsis: "…"
+}
+
+// One marker, not two. Filled is the cursor, the way LazyVim keeps `cursorline`
+// as the only mark and lets the mouse move it rather than add a state.
+function nodeGlyph(commit, selected) {
+    if (commit && commit.deleted_at) return GLYPHS.nodeGone   // a tombstone keeps its place
+    return selected ? GLYPHS.nodeHere : GLYPHS.node
+}
+
+function rail(kind, opts) {
+    var o = opts || {}
+    switch (kind) {
+    case "body": return GLYPHS.bar
+    // The staged commit's lane is dotted until there is something to commit.
+    case "staged": return o.ready ? GLYPHS.bar : GLYPHS.dottedBar
+    case "reply": return (o.last ? GLYPHS.lastBranch : GLYPHS.branch) + GLYPHS.dash + GLYPHS.arm
+    default: return " "
+    }
+}
+
+function _cut(text, room) {
+    var chars = Array.from(String(text || ""))
+    if (chars.length <= room) return chars.join("")
+    if (room <= 1) return chars.slice(0, Math.max(0, room)).join("")
+    return chars.slice(0, room - 1).join("") + GLYPHS.ellipsis
+}
+
+// A row's header, in two pieces, because QML anchors better than this can pad.
+//
+// It used to be one string padded to a column count. That was a lie: glyph
+// positions round to whole pixels, so the line painted wider than the column it
+// was padded to and Qt elided the counts off the end. Anchoring the right piece
+// costs nothing and cannot drift.
+
+function headerLeft(commit) {
+    if (!commit) return ""
+    var author = commit.author || {}
+    return (commit.short_hash || "") + "  @" + (author.username || "?")
+}
+
+function headerRight(commit, nowMs) {
+    if (!commit) return ""
+    var parts = [ageFor(commit.created_at, nowMs === undefined ? Date.now() : nowMs)]
+    if (commit.status === "pending") parts.push("held")
+    if (commit.stars_count > 0)
+        parts.push((commit.starred ? GLYPHS.star : GLYPHS.unstarred) + " " + commit.stars_count)
+    if (commit.replies_count > 0) parts.push(GLYPHS.replies + " " + commit.replies_count)
+    return parts.filter(function (part) { return !!part }).join("   ")
+}
+
+// A frame's top or bottom border, filling its width exactly. The title sits in
+// the top border, the way a box-drawn pane labels itself.
+function frameLine(kind, width, title) {
+    if (!isFinite(width)) return ""
+    var w = Math.floor(width)
+    if (w < 2) return ""
+    var corners = kind === "bottom" ? [GLYPHS.bottomLeft, GLYPHS.bottomRight]
+                                    : [GLYPHS.topLeft, GLYPHS.topRight]
+    var inner = w - 2
+    var label = ""
+    if (kind !== "bottom" && title) {
+        // "─ title ─" needs two spaces and at least one dash on each side.
+        var room = inner - 4
+        if (room >= 1) label = " " + _cut(title, room) + " "
+    }
+    var dashes = inner - Array.from(label).length
+    var lead = label ? 1 : 0
+    return corners[0]
+        + new Array(lead + 1).join(GLYPHS.dash)
+        + label
+        + new Array(Math.max(0, dashes - lead) + 1).join(GLYPHS.dash)
+        + corners[1]
 }
