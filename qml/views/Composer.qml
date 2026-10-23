@@ -41,9 +41,10 @@ Item {
 
   Avatar {
     id: avatar
-    x: grid.cell * 3
+    x: grid.cell * 2 - implicitWidth / 2
     y: root.pad
     size: grid.cell * 2
+    ring: root.lane
     source: root.me.avatar_url || ""
     name: root.me.name || ""
   }

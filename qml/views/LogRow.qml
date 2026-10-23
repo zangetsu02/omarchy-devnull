@@ -88,7 +88,9 @@ Item {
 
   Avatar {
     id: avatar
-    x: grid.cell * root.laneCol
+    // Centred on the lane, not on its column: the ring and its gap add four
+    // pixels a side, which is exactly how far off centre it sat before.
+    x: grid.cell * root.laneCol + grid.cell - implicitWidth / 2
     y: root.pad
     size: grid.cell * 2
     ring: root.lane
