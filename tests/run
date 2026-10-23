@@ -11,3 +11,4 @@ node tui-test.mjs
 ./pairing-test
 ./read-test
 ./write-test
+./remotes-test
