@@ -34,8 +34,14 @@ Item {
   // avatar and the text start on the same boundary on every line.
   Metrics { id: grid }
   readonly property real cell: grid.cell
-  // rail(2) + avatar(2) + a space = where every line of text begins
-  readonly property real textCol: grid.cell * (topLevel ? 5 : 7)
+
+  // The columns, derived rather than written out four times. A reply's head is
+  // `├─╴`, three cells wide, and the avatar used to start inside it and paint
+  // over the arm.
+  readonly property int railCol: topLevel ? 0 : 2
+  readonly property int railCells: topLevel ? 2 : 3
+  readonly property int avatarCol: railCol + railCells
+  readonly property real textCol: grid.cell * (avatarCol + 3)   // avatar(2) + a space
 
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
@@ -53,10 +59,10 @@ Item {
   // --- The rail: drawn as a terminal would draw it ----------------------------
 
   Rail {
-    x: root.topLevel ? 0 : grid.cell * 2
+    x: grid.cell * root.railCol
     y: root.pad
     metrics: grid
-    cells: root.topLevel ? 2 : 4
+    cells: root.railCells
     headColor: root.lane
     tailColor: root.view.railColor
     head: root.topLevel
@@ -68,9 +74,9 @@ Item {
 
   Avatar {
     id: avatar
-    x: root.cell * (root.topLevel ? 2 : 4)
+    x: grid.cell * root.avatarCol
     y: root.pad
-    size: root.cell * 2
+    size: grid.cell * 2
     source: root.row.deleted ? "" : root.row.avatar
     name: root.row.name
     clickable: !root.row.deleted

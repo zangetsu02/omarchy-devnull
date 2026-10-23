@@ -218,7 +218,11 @@ Item {
     "1": function () { root.goTo("log", ""); feed.switchLog("following") },
     "2": function () { root.goTo("log", ""); feed.switchLog("latest") },
     "3": function () { root.goTo("log", ""); feed.switchLog("trending") },
-    "c": function () { root.goTo("log", ""); root.focusComposer() },
+    "c": function () {
+      if (feed.signedOut) { root.say("Not connected. Press : connect", true); return }
+      root.goTo("log", "")
+      root.focusComposer()
+    },
     "R": function () { feed.refresh() }
   })
   // `g` then a letter goes somewhere, as on the site.
@@ -412,6 +416,10 @@ Item {
             onLoadMore: feed.loadMore()
             header: Composer {
               view: root
+              // Nothing to compose with until this machine is connected, and an
+              // empty avatar over an empty box is a worse invitation than none.
+              visible: !feed.signedOut
+              height: visible ? implicitHeight : 0
               Component.onCompleted: root.composerField = field
             }
           }
@@ -490,7 +498,28 @@ Item {
         padding: Style.space(20)
         spacing: Style.space(10)
 
+        // Signed out there is no "you" to show: an empty avatar over three
+        // zeroes says less than the one control that would change it.
+        Mono {
+          visible: feed.signedOut
+          text: "[ connect ]"
+          color: asideConnect.hovered ? Color.foreground : root.primary
+          font.pixelSize: Style.font.body
+          font.bold: true
+          HoverHandler { id: asideConnect; cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: root.connect() }
+        }
+        Mono {
+          visible: feed.signedOut
+          bottomPadding: Style.space(6)
+          width: aside.width - aside.padding * 2
+          wrapMode: Text.WordWrap
+          color: Color.muted
+          text: "This machine has never been connected. The log below is public."
+        }
+
         Row {
+          visible: !feed.signedOut
           spacing: Style.space(12)
           Avatar {
             size: Style.space(44)
@@ -506,6 +535,7 @@ Item {
           TapHandler { onTapped: root.goTo("profile", root.myUsername) }
         }
         Mono {
+          visible: !feed.signedOut
           textFormat: Text.StyledText
           text: "<b>" + (root.me.commits_count || 0) + "</b>" + root.dimmed(" commits   ")
             + "<b>" + (root.me.following_count || 0) + "</b>" + root.dimmed(" following   ")
