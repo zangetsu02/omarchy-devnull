@@ -329,7 +329,7 @@ Panel {
       y: Style.space(8)
       metrics: grid
       headColor: glance.lane
-      tailColor: root.railColor
+      tailColor: glance.lane
       head: Model.nodeGlyph(glance.modelData, false)
     }
 

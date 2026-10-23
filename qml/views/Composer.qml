@@ -34,7 +34,7 @@ Item {
     metrics: grid
     cells: 2
     headColor: root.lane
-    tailColor: root.view.railColor
+    tailColor: root.lane
     head: root.ready ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
     tail: Model.rail("staged", { ready: root.ready })
   }

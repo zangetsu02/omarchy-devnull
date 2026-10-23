@@ -64,7 +64,9 @@ Item {
     metrics: grid
     cells: root.railCells
     headColor: root.lane
-    tailColor: root.view.railColor
+    // The lane is what makes it a graph: a neutral grey at 16% alpha is
+    // invisible on a one-pixel glyph stroke.
+    tailColor: root.lane
     head: root.topLevel
       ? Model.nodeGlyph(root.commit, root.selected)
       : Model.rail("reply", { last: root.lastReply })

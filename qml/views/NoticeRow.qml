@@ -38,7 +38,7 @@ Item {
     y: root.pad
     metrics: grid
     headColor: root.notice.unread ? root.tint : root.view.railColor
-    tailColor: root.view.railColor
+    tailColor: root.tint
     head: root.notice.unread ? Model.GLYPHS.nodeHere : Model.GLYPHS.node
   }
 
