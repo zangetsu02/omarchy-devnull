@@ -95,6 +95,8 @@ class State:
         self.public_calls = 0
         self.last_signature = ""
         self.public_key = ""
+        # Whether dev-null recognises any key it is offered.
+        self.knows_a_key = True
         self.next_response = None
         self.next_status = None
         self.stars = {c["id"]: c["starred"] for c in COMMITS}
@@ -238,6 +240,8 @@ def handler_for(state):
                 self.reply(200, {"data": REPLIES[0], "ancestors": [COMMITS[0]]})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/replies", path):
                 self.reply(200, {"data": REPLIES, "meta": {"next_cursor": None}})
+            elif re.fullmatch(r"/api/v1/notifications/[^/]+/group", path):
+                self.reply(200, {"data": NOTIFICATIONS})
             elif path in ("/api/v1/me/muted", "/api/v1/me/blocked"):
                 self.reply(200, {"data": [{"username": "noisy", "name": "Noisy"}]})
             elif path == "/api/v1/notifications":
@@ -247,6 +251,20 @@ def handler_for(state):
                 self.reply(404, {"message": "Not Found."})
 
         def do_POST(self):
+            # Unsigned on purpose, as upstream has it: anyone may ask which of
+            # a set of public keys dev-null knows.
+            if self.path.split("?")[0] == "/api/cli/key-lookups":
+                body = self.read_body()
+                state.last_uri = self.path
+                state.public_calls += 1
+                keys = [k for k in body.splitlines() if k.strip()]
+                answer = (keys[0] + "\n").encode() if keys and state.knows_a_key else b""
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(answer)))
+                self.end_headers()
+                self.wfile.write(answer)
+                return
             if not self.signed():
                 return
             body = self.read_body()
@@ -268,10 +286,24 @@ def handler_for(state):
                 self.reply(200, {"ok": True})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/reports", path):
                 self.reply(201, {"ok": True})
+            elif path == "/api/v1/commits/preview":
+                self.reply(200, {"segments": [{"kind": "text", "text": "hello "}],
+                                 "mentions": ["zangetsu02"]})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+/poll/votes", path):
+                self.reply(200, {"data": dict(COMMITS[0])})
             elif re.fullmatch(r"/api/v1/commits/[^/]+/pasteis", path):
                 self.reply(200, {"data": dict(COMMITS[0], pasteis_count=3),
                                  "pasteis_remaining": 2,
                                  "pasteis_resets_at": "2026-10-24T00:00:00Z"})
+            elif path == "/api/cli/key-lookups":
+                state.last_uri = self.path
+                keys = [k for k in body.splitlines() if k.strip()]
+                answer = (keys[0] + "\n").encode() if keys else b""
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(answer)))
+                self.end_headers()
+                self.wfile.write(answer)
             elif path == "/api/v1/devices":
                 self.reply(200, {"username": "zangetsu02"})
             else:
@@ -284,7 +316,9 @@ def handler_for(state):
             self.record(body)
             if self.forced():
                 return
-            if self.path.split("?")[0] == "/api/v1/me/pasteis-mode":
+            if self.path.split("?")[0] in ("/api/v1/me/pasteis-mode",
+                                           "/api/v1/me/lane",
+                                           "/api/v1/me/github"):
                 self.reply(200, {"data": {"username": "zangetsu02"},
                                  "unread_notifications_count": 0})
             else:
@@ -298,6 +332,8 @@ def handler_for(state):
                 return
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", self.path.split("?")[0])
             if re.fullmatch(r"/api/v1/users/[^/]+/(follow|mute|block)", self.path):
+                self.no_content()
+            elif re.fullmatch(r"/api/v1/commits/[^/]+", self.path):
                 self.no_content()
             elif star:
                 state.stars[star.group(1)] = False

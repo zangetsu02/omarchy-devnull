@@ -149,6 +149,43 @@ def main():
         answer, code = run("blocked")
         assert code == 0 and state.last_uri == "/api/v1/me/blocked"
 
+        # Your own commit, taken back. The server answers with no content.
+        answer, code = run("delete", ID)
+        assert code == 0, answer
+        assert state.last_method == "DELETE" and state.last_uri == f"/api/v1/commits/{ID}"
+
+        # A poll vote names the option it is for, by its id.
+        OPTION = "01a15d37-0511-7071-a1ae-000000000002"
+        answer, code = run("vote", ID, OPTION)
+        assert code == 0, answer
+        assert state.last_uri == f"/api/v1/commits/{ID}/poll/votes"
+        assert json.loads(state.last_body) == {"option": OPTION}, state.last_body
+
+        # Preview renders a body the way the site will, before it is sent.
+        answer, code = run("preview", "hello @zangetsu02")
+        assert code == 0, answer
+        assert state.last_uri == "/api/v1/commits/preview"
+        assert json.loads(state.last_body) == {"body": "hello @zangetsu02"}
+
+        # One notification group, expanded.
+        answer, code = run("group", "n1")
+        assert code == 0 and state.last_uri == "/api/v1/notifications/n1/group"
+
+        # Your own settings: the lane colour, and a sync from GitHub.
+        answer, code = run("lane", "3")
+        assert code == 0 and json.loads(state.last_body) == {"lane": 3}
+        answer, code = run("lane", "auto")
+        assert code == 0 and json.loads(state.last_body) == {"lane": None}
+        # A hex colour is the other way to set it, and the two are exclusive.
+        answer, code = run("lane", "#8fa381")
+        assert code == 0 and json.loads(state.last_body) == {"color": "#8fa381"}
+        answer, code = run("lane", "purple")
+        assert code == 1 and "purple" in answer["error"]
+        answer, code = run("lane", "9")
+        assert code == 1 and "9" in answer["error"]
+        answer, code = run("sync-github")
+        assert code == 0 and state.last_uri == "/api/v1/me/github"
+
         print("write: all checks passed")
     finally:
         stop()

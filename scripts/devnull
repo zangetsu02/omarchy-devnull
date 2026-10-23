@@ -21,6 +21,14 @@ Usage: devnull <command> [arguments]
   pasteis-mode on|off    turn pastéis mode on or off
   muted                  who you muted
   blocked                who you blocked
+  delete <id>            take back one of your own commits
+  vote <id> <option>     vote in a commit's poll
+  preview <body>         how the site will render a body, before you send it
+  group <notification>   everyone behind one grouped notification
+  lane 0-5|#rrggbb|auto  your colour on the graph
+  sync-github            pull your name, bio and avatar from GitHub again
+  github-key             which of your public keys dev-null already knows
+  delete-account <user>  delete your account, naming it to mean it
   replies <id> [--cursor C]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
@@ -471,6 +479,102 @@ def cmd_blocked():
     return {"users": call("GET", "/api/v1/me/blocked").get("data", [])}
 
 
+def cmd_delete(commit_id):
+    """Yours to take back. The server answers with no content."""
+    return call("DELETE", f"/api/v1/commits/{commit_id}") or {"deleted": commit_id}
+
+
+def cmd_vote(commit_id, option):
+    """The option's id, not its position: a poll's options are uuids."""
+    return call("POST", f"/api/v1/commits/{commit_id}/poll/votes", {"option": option})
+
+
+def cmd_preview(body):
+    """Highlighting and resolving mentions happen on the server, so a composer
+    that wants to show either has to ask."""
+    return call("POST", "/api/v1/commits/preview", {"body": body})
+
+
+def cmd_group(notification_id):
+    return call("GET", f"/api/v1/notifications/{notification_id}/group")
+
+
+# The six lanes dev-null draws its graph in; `auto` gives the choice back.
+def cmd_lane(value):
+    if value == "auto":
+        return call("PUT", "/api/v1/me/lane", {"lane": None})
+    if re.fullmatch(r"#[0-9a-f]{6}", value):
+        return call("PUT", "/api/v1/me/lane", {"color": value})
+    if re.fullmatch(r"[0-5]", value):
+        return call("PUT", "/api/v1/me/lane", {"lane": int(value)})
+    raise BridgeError(f"A lane is 0 to 5, a #rrggbb colour, or auto, not {value!r}.", "http")
+
+
+def cmd_sync_github():
+    """Your name, bio and avatar, mirrored from GitHub again. Throttled to one
+    a minute upstream."""
+    return call("PUT", "/api/v1/me/github")
+
+
+def public_keys():
+    """Your public keys: the agent's first, then the ones in ~/.ssh. Public
+    keys are public; no private key is ever read or sent."""
+    keys = []
+    agent = subprocess.run(["ssh-add", "-L"], capture_output=True, text=True)
+    if agent.returncode == 0:
+        keys += [line for line in agent.stdout.splitlines() if line.startswith("ssh-")]
+    ssh_dir = Path(os.environ.get("DEVNULL_SSH_DIR", Path.home() / ".ssh"))
+    for path in sorted(ssh_dir.glob("*.pub")):
+        try:
+            line = path.read_text().strip()
+        except OSError:
+            continue
+        if line.startswith("ssh-") and line not in keys:
+            keys.append(line)
+    return keys
+
+
+def cmd_github_key():
+    """Asks dev-null which of your public keys it already knows, the way the
+    `/commit` script does before it signs. Unsigned, and the body is the keys
+    as plain text: this endpoint takes no JSON."""
+    keys = public_keys()
+    if not keys:
+        return {"known": False, "key": "", "offered": 0}
+
+    body = ("\n".join(keys) + "\n").encode()
+    request = urllib.request.Request(
+        BASE_URL + "/api/cli/key-lookups", data=body,
+        headers={"Content-Type": "text/plain", "User-Agent": USER_AGENT}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            found = response.read().decode(errors="replace").strip()
+    except urllib.error.HTTPError as error:
+        message = f"dev-null answered {error.code} for the key lookup."
+        raise BridgeError(message, classify(error.code, None, message)) from error
+    except urllib.error.URLError as error:
+        raise BridgeError(str(getattr(error, "reason", error)), "network") from error
+
+    return {"known": found != "", "key": found, "offered": len(keys)}
+
+
+def cmd_delete_account(username):
+    """Deletes the account and every device with it, so this key stops working
+    at once. The username is typed again because nothing here can be undone."""
+    device = {}
+    try:
+        device = json.loads((HOME / "device.json").read_text())
+    except (OSError, ValueError):
+        pass
+    mine = device.get("username") or ""
+    if not mine or username != mine:
+        raise BridgeError(
+            f"Name the account to delete it. This machine is paired as "
+            f"{mine or 'nothing'!r}.", "http")
+    call("DELETE", "/api/v1/me")
+    return {"deleted": mine}
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -499,7 +603,10 @@ COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "block": cmd_block, "unblock": cmd_unblock,
             "report": cmd_report, "pastel": cmd_pastel,
             "pasteis-mode": cmd_pasteis_mode,
-            "muted": cmd_muted, "blocked": cmd_blocked}
+            "muted": cmd_muted, "blocked": cmd_blocked,
+            "delete": cmd_delete, "vote": cmd_vote, "preview": cmd_preview,
+            "group": cmd_group, "lane": cmd_lane, "sync-github": cmd_sync_github,
+            "github-key": cmd_github_key, "delete-account": cmd_delete_account}
 
 
 def main():
