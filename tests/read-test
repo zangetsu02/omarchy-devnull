@@ -25,6 +25,9 @@ def main():
     home = Path(tmp.name)
     subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
                     "-f", str(home / "id_ed25519")], check=True)
+    # A machine that finished pairing: `pair` writes this last, and the bridge
+    # reads it to tell a revoked device from a setup that never got approved.
+    (home / "device.json").write_text('{"username": "zangetsu02"}')
     state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
     environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
 
@@ -134,6 +137,25 @@ def main():
         # It really went unsigned: it never joined the signed-call list.
         assert state.public_calls == 1
         assert state.last_uri == "/"
+
+        # A key the setup made but never got approved is NOT "paired any more":
+        # it was never paired at all. device.json is written only by a pairing
+        # that finished, so its absence is what tells the two apart.
+        half = tempfile.TemporaryDirectory()
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
+                        "-f", str(Path(half.name) / "id_ed25519")], check=True)
+        state.next_status = 401
+        state.next_response = {"code": "device_not_approved", "message": "This key isn't approved."}
+        answer, code = run_in(half.name, "me")
+        assert code == 1 and answer["kind"] == "unpaired", answer
+
+        # With device.json beside it, the same refusal really does mean revoked.
+        (Path(half.name) / "device.json").write_text('{"username": "zangetsu02"}')
+        state.next_status = 401
+        state.next_response = {"code": "device_not_approved", "message": "This key isn't approved."}
+        answer, code = run_in(half.name, "me")
+        assert code == 1 and answer["kind"] == "auth", answer
+        half.cleanup()
 
         # Never paired is its own kind: the panel must not call it an error nor
         # count it toward "re-pair me". A missing key is not a refused device.

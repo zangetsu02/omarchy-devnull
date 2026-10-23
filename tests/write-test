@@ -26,6 +26,9 @@ def main():
     home = Path(tmp.name)
     subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t",
                     "-f", str(home / "id_ed25519")], check=True)
+    # A machine that finished pairing: `pair` writes this last, and the bridge
+    # reads it to tell a revoked device from a setup that never got approved.
+    (home / "device.json").write_text('{"username": "zangetsu02"}')
     state, url, stop = mock_module.start((home / "id_ed25519.pub").read_text())
     environment = dict(os.environ, DEVNULL_URL=url, DEVNULL_HOME=str(home))
 

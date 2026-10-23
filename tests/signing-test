@@ -95,13 +95,18 @@ def main():
     # upstream answers 401 for both invalid_signature and device_not_approved,
     # and only the latter may count toward the re-pair state.
     assert devnull.classify(401, "invalid_signature",
-                            "Signature expired. Check that your clock is right.") == "expired"
+                            "Signature expired. Check that your clock is right.",
+                            paired=True) == "expired"
+    # The same refusal reads two ways. A machine that finished pairing has had
+    # its device revoked; one that never did simply never finished the setup.
     assert devnull.classify(401, "device_not_approved",
-                            "This key isn't approved for the /dev/null app.") == "auth"
-    assert devnull.classify(403, "commit_rules_required", "") == "rules"
-    assert devnull.classify(429, "rate_limited", "Too Many Attempts.") == "limited"
-    assert devnull.classify(500, "", "Server Error") == "http"
-    assert devnull.classify(None, None, "Name or service not known") == "network"
+                            "This key isn't approved.", paired=True) == "auth"
+    assert devnull.classify(401, "device_not_approved",
+                            "This key isn't approved.", paired=False) == "unpaired"
+    assert devnull.classify(403, "commit_rules_required", "", paired=True) == "rules"
+    assert devnull.classify(429, "rate_limited", "Too Many Attempts.", paired=True) == "limited"
+    assert devnull.classify(500, "", "Server Error", paired=True) == "http"
+    assert devnull.classify(None, None, "Name or service not known", paired=True) == "network"
 
     print("signing: all checks passed")
 
