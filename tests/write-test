@@ -97,6 +97,26 @@ def main():
             uri="/api/v1/commits", body='{"body":"tampered"}',
             signature=state.last_signature) is False
 
+        # Safety: mute and block take a username, report takes a commit.
+        answer, code = run("mute", "noisy")
+        assert code == 0 and state.last_method == "POST"
+        assert state.last_uri == "/api/v1/users/noisy/mute", state.last_uri
+        answer, code = run("unmute", "noisy")
+        assert code == 0 and state.last_method == "DELETE"
+        answer, code = run("block", "rude")
+        assert code == 0 and state.last_uri == "/api/v1/users/rude/block"
+        answer, code = run("unblock", "rude")
+        assert code == 0 and state.last_method == "DELETE"
+        answer, code = run("report", ID)
+        assert code == 0 and state.last_uri == f"/api/v1/commits/{ID}/reports"
+
+        # A commit that is gone answers the same as one you may not see, so the
+        # caller cannot use a report to probe for what exists.
+        state.next_status = 404
+        state.next_response = {"code": "commit_unavailable", "message": "That commit is unavailable."}
+        answer, code = run("report", ID)
+        assert code == 1 and answer["error"] == "That commit is unavailable."
+
         print("write: all checks passed")
     finally:
         stop()

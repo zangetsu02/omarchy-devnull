@@ -11,6 +11,11 @@ Usage: devnull <command> [arguments]
   star <id>              star a commit
   unstar <id>            take the star back
   reply <id> <body>      reply to a commit; the answer says whether it is live
+  mute <user>            stop seeing someone, without telling them
+  unmute <user>          undo that
+  block <user>           block someone both ways
+  unblock <user>         undo that
+  report <id>            send a commit to the moderators
   replies <id> [--cursor C]
                          the direct replies to a commit, oldest first
   commit <body> [--quote <id>]
@@ -394,6 +399,28 @@ def cmd_commit(body, *args):
     return answer.get("data", answer)
 
 
+def cmd_mute(username):
+    return call("POST", f"/api/v1/users/{username}/mute")
+
+
+def cmd_unmute(username):
+    return call("DELETE", f"/api/v1/users/{username}/mute")
+
+
+def cmd_block(username):
+    return call("POST", f"/api/v1/users/{username}/block")
+
+
+def cmd_unblock(username):
+    return call("DELETE", f"/api/v1/users/{username}/block")
+
+
+def cmd_report(commit_id):
+    """A commit that is gone answers the same as one you may not see, upstream,
+    so a report cannot be used to find out what exists."""
+    return call("POST", f"/api/v1/commits/{commit_id}/reports")
+
+
 def cmd_pair(code, verifier):
     """Redeem a code for a device. The key signing this is the one being approved."""
     answer = call("POST", "/api/v1/devices", {"code": code, "code_verifier": verifier})
@@ -417,7 +444,10 @@ COMMANDS = {"me": cmd_me, "pair": cmd_pair, "feed": cmd_feed,
             "unfollow": cmd_unfollow, "starred": listing("/api/v1/starred"),
             "user-commits": per_user("/api/v1/users/{username}/commits"),
             "followers": per_user("/api/v1/users/{username}/followers"),
-            "following": per_user("/api/v1/users/{username}/following")}
+            "following": per_user("/api/v1/users/{username}/following"),
+            "mute": cmd_mute, "unmute": cmd_unmute,
+            "block": cmd_block, "unblock": cmd_unblock,
+            "report": cmd_report}
 
 
 def main():

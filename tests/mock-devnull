@@ -262,6 +262,10 @@ def handler_for(state):
                 sent = json.loads(body)
                 self.reply(201, {"data": {"id": "new", "short_hash": "aaaaaaa",
                                           "status": "pending", "body": sent["body"]}})
+            elif re.fullmatch(r"/api/v1/users/[^/]+/(mute|block)", path):
+                self.reply(200, {"ok": True})
+            elif re.fullmatch(r"/api/v1/commits/[^/]+/reports", path):
+                self.reply(201, {"ok": True})
             elif path == "/api/v1/devices":
                 self.reply(200, {"username": "zangetsu02"})
             else:
@@ -274,7 +278,7 @@ def handler_for(state):
             if self.forced():
                 return
             star = re.fullmatch(r"/api/v1/commits/([^/]+)/star", self.path.split("?")[0])
-            if re.fullmatch(r"/api/v1/users/[^/]+/follow", self.path):
+            if re.fullmatch(r"/api/v1/users/[^/]+/(follow|mute|block)", self.path):
                 self.no_content()
             elif star:
                 state.stars[star.group(1)] = False
