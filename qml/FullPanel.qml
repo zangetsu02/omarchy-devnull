@@ -617,16 +617,27 @@ Item {
         Mono { topPadding: Style.space(4); text: "Keys"; font.pixelSize: Style.font.body; font.bold: true }
         Repeater {
           model: [
-            ["j k", "move"], ["1 2 3", "following · latest · trending"], ["o", "replies"],
+            ["j k", "move"], ["1 2 3", "the three logs"], ["o", "replies"],
             ["s", "star"], ["r", "reply"], ["q", "quote"], ["c", "new commit"], ["p", "author's profile"],
-            ["y", "copy link"], ["enter", "the commit"], ["O", "open on the site"], ["g l n s p", "log · notif. · starred · you"],
+            ["y", "copy link"], ["enter", "the commit"], ["O", "open on the site"],
+            ["g l n r s p", "the six pages"], [":", "the command line"],
             ["⌫", "back"], ["R", "refresh"], ["esc", "close"]
           ]
-          Row {
+          // The cap keeps its width and the description takes what is left,
+          // elided: a label longer than the column used to run off the edge.
+          Item {
             required property var modelData
-            spacing: Style.space(8)
-            KeyCap { text: modelData[0] }
-            Mono { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: Color.muted }
+            width: aside.width - aside.padding * 2
+            height: cap.height
+            KeyCap { id: cap; text: modelData[0] }
+            Mono {
+              x: cap.width + Style.space(8)
+              width: parent.width - x
+              anchors.verticalCenter: cap.verticalCenter
+              elide: Text.ElideRight
+              color: Color.muted
+              text: modelData[1]
+            }
           }
         }
       }
