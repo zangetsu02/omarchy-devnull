@@ -49,10 +49,12 @@ Item {
   implicitHeight: Math.max(body.implicitHeight, avatar.height) + pad * 2
 
 
-  // The cursor, in its own column: a solid bar down the whole row.
+  // The cursor, in its own column. Inset from the divider: welded to it, a
+  // full-height bar in the action colour reads as a focus ring around the
+  // pane rather than as a mark on one row.
   Rail {
     visible: root.selected
-    x: 0
+    x: Style.space(4)
     y: root.pad
     metrics: grid
     cells: 1
