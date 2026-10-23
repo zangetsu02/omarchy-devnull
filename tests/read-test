@@ -116,6 +116,18 @@ def main():
         answer, code = run("me")
         assert code == 1 and answer["kind"] == "auth" and answer["error"] == "Not approved."
 
+        # Notifications can be narrowed to the kinds upstream knows. The server
+        # remembers the choice in a cookie we do not send, so it goes on every
+        # request or it is forgotten.
+        run("notifications", "--type", "replies,mentions")
+        assert state.last_uri == "/api/v1/notifications?type=replies%2Cmentions", state.last_uri
+        run("notifications")
+        assert state.last_uri == "/api/v1/notifications", state.last_uri
+        # A kind the server does not know is refused here rather than silently
+        # becoming "all", which is what upstream would do with it.
+        answer, code = run("notifications", "--type", "gossip")
+        assert code == 1 and "gossip" in answer["error"], answer
+
         # The public feed: no key, no signature, the same shape as the API one.
         public, code = run_in(tempfile.gettempdir() + "/devnull-nokey", "feed", "--public")
         assert code == 0, public

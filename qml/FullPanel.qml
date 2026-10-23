@@ -52,7 +52,22 @@ Item {
   property var history: []
   property string replyingTo: ""
   // Per commit id, not per row: the feed is replaced on every refresh.
+  // Kept on disk: a commit half written when the shell reloads is still there
+  // afterwards. Only text nobody has sent yet goes in, and a file that is
+  // missing or unreadable means no drafts, never a panel that will not open.
   property var drafts: ({})
+  readonly property string draftsPath: Quickshell.env("HOME") + "/.cache/omarchy/devnull-drafts.json"
+
+  FileView {
+    id: draftsFile
+    path: root.draftsPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.drafts = Model.draftsFromJson(text())
+  }
+
+  function saveDrafts() { draftsFile.setText(Model.draftsToJson(root.drafts)) }
   property string composerText: ""
   property var quoting: null
   property string status: ""
@@ -80,7 +95,7 @@ Item {
     panelOpen: root.opened
     onReplyDone: function (id, answer) {
       if (Model.keepsDraft(answer)) return
-      root.drafts = Model.clearDraft(root.drafts, id)
+      root.drafts = Model.clearDraft(root.drafts, id); root.saveDrafts()
       if (root.replyingTo === id) root.replyingTo = ""
     }
     onTold: function (text, failed) { root.say(text, failed) }
@@ -100,7 +115,7 @@ Item {
   function toggleThread(id) { feed.toggleThread(id) }
   function loadMoreReplies(id, cursor) { feed.loadThread(id, cursor) }
   function draftFor(id) { return Model.draftFor(drafts, id) }
-  function keepDraft(id, text) { drafts = Model.withDraft(drafts, id, text) }
+  function keepDraft(id, text) { drafts = Model.withDraft(drafts, id, text); saveDrafts() }
   // The draft is cleared only once the reply lands: if the server refuses it,
   // what was typed is the only copy.
   function sendReply(id, text) { if (text.trim() !== "") feed.sendReply(id, text) }

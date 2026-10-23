@@ -206,6 +206,28 @@ function withDraft(drafts, id, text) {
     return merged(drafts, change)
 }
 
+// Drafts outlive the shell. What goes to disk is only what someone typed and
+// has not sent: ids mapped to text, nothing else, and nothing empty.
+function draftsToJson(drafts) {
+    var out = {}
+    for (var id in (drafts || {})) {
+        var text = drafts[id]
+        if (typeof text === "string" && text !== "") out[id] = text
+    }
+    return JSON.stringify(out)
+}
+
+function draftsFromJson(text) {
+    var parsed = {}
+    try { parsed = JSON.parse(text || "{}") || {} } catch (e) { return {} }
+    if (typeof parsed !== "object" || parsed === null) return {}
+    var out = {}
+    // The file is ours, but it is still a file: anything that is not text
+    // keyed by an id is dropped rather than handed to a view.
+    for (var id in parsed) if (typeof parsed[id] === "string") out[id] = parsed[id]
+    return out
+}
+
 function clearDraft(drafts, id) {
     return without(drafts, id)
 }

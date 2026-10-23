@@ -7,7 +7,8 @@ Usage: devnull <command> [arguments]
   pair <code> <verifier> redeem an authorization code; writes device.json
   feed [--log L] [--cursor C]
                          a log (latest, following, trending), 20 commits and the cursor for the next
-  notifications          what happened to you — THIS MARKS THEM READ everywhere
+  notifications [--type replies,mentions,…]
+                         what happened to you — THIS MARKS THEM READ everywhere
   star <id>              star a commit
   unstar <id>            take the star back
   reply <id> <body>      reply to a commit; the answer says whether it is live
@@ -367,10 +368,27 @@ def cmd_unfollow(username):
     return {"username": username, "is_followed": False}
 
 
-def cmd_notifications():
-    """Listing marks every notification read, upstream, for the web and the app too.
-    Only call this when the panel is opened, never on a timer."""
-    answer = call("GET", "/api/v1/notifications")
+# The kinds upstream will filter by, from ListNotificationsRequest::TYPE_RULE.
+NOTIFICATION_TYPES = ("replies", "quotes", "stars", "mentions", "follows", "moderation")
+
+
+def cmd_notifications(*args):
+    """Listing marks every notification read, upstream, for the web and the app
+    too. Only call this when the panel is opened, never on a timer.
+
+    The server remembers a chosen filter in a cookie, which this does not send,
+    so the type goes on every request or it is forgotten."""
+    path = "/api/v1/notifications"
+    if len(args) == 2 and args[0] == "--type":
+        wanted = args[1]
+        if wanted not in ("all", "none"):
+            for kind in wanted.split(","):
+                if kind not in NOTIFICATION_TYPES:
+                    raise BridgeError(
+                        f"No notification kind called {kind!r}. "
+                        f"One or more of: {', '.join(NOTIFICATION_TYPES)}.", "http")
+        path += "?" + urllib.parse.urlencode({"type": wanted})
+    answer = call("GET", path)
     return {"notifications": answer.get("data", []), "read_at": answer.get("read_at")}
 
 
