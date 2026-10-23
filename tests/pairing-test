@@ -83,6 +83,25 @@ def main():
         assert setup.wait_for_callback(fifo, "abc", deadline=time.monotonic() + 1) is None
         assert time.monotonic() - started < 3, "it waited past its own deadline"
 
+    # The scheme belongs to the official app. We borrow it for one approval and
+    # give it back, instead of keeping it for good.
+    with tempfile.TemporaryDirectory() as tmp:
+        desktop = Path(tmp) / "omarchy-devnull-callback.desktop"
+        desktop.write_text("[Desktop Entry]\n")
+        setup.release_handler(desktop, dry_run=True)
+        assert not desktop.exists(), "the handler file is still there"
+        # Releasing one that is already gone is not an error.
+        setup.release_handler(desktop, dry_run=True)
+
+    # A code pasted by hand is read the same way as one the browser sent: the
+    # whole callback URL, or just the code with the state we asked for.
+    assert setup.accepts_callback("abc", "devnull://cb?code=xyz&state=abc") == "xyz"
+    assert setup.accepts_pasted("abc", "devnull://cb?code=xyz&state=abc") == "xyz"
+    assert setup.accepts_pasted("abc", "  devnull://cb?code=xyz&state=abc  ") == "xyz"
+    assert setup.accepts_pasted("abc", "xyz") == "xyz"
+    assert setup.accepts_pasted("abc", "") is False
+    assert setup.accepts_pasted("abc", "devnull://cb?code=1&state=WRONG") is False
+
     # Review Focus: a scheme handler owned by something else stops the setup.
     assert setup.handler_conflict("firefox.desktop") is True
     assert setup.handler_conflict("omarchy-devnull-callback.desktop") is False

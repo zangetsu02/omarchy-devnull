@@ -136,6 +136,11 @@ touches the key; the QML asks it and reads JSON back.
 It makes the key, registers a handler for `devnull://` links, opens the approval
 page in your browser, and redeems the code that comes back. One minute, once.
 
+`devnull://` belongs to the official app, so the handler is given back as soon
+as the approval is over, whether it worked or not. If your browser does not
+come back to the terminal by itself, paste the `devnull://` link from its
+address bar and press enter; Firefox and Safari leave it there.
+
 Then, if you have never done it, accept the commit rules on dev-null.sh. Until
 you do, the server refuses every reply you send, from here, from the app, from
 anywhere.
@@ -146,13 +151,11 @@ anywhere.
 omarchy plugin remove io.github.zangetsu02.devnull
 ```
 
-That takes the plugin and its badge away. Pairing left three things of its own,
-which go with it if you want a clean machine:
+That takes the plugin and its badge away. Pairing left one thing of its own,
+which goes with it if you want a clean machine:
 
 ```bash
-rm -rf ~/.local/share/omarchy-devnull                              # the device key
-rm ~/.local/share/applications/omarchy-devnull-callback.desktop    # the devnull:// handler
-update-desktop-database ~/.local/share/applications
+rm -rf ~/.local/share/omarchy-devnull    # the device key
 ```
 
 Then revoke the device on dev-null.sh under **Settings → Devices**, and drop

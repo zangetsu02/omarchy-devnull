@@ -71,6 +71,40 @@ IGNORE = "ignore"      # meant for something else, or empty: keep waiting
 CANCELLED = "cancelled"  # refused on the page: stop, and say so
 
 
+def accepts_pasted(state, text):
+    """A code the user pasted. Browsers hand the callback back in different
+    ways, and some hand it back nowhere at all: Firefox and Safari leave the
+    `devnull://` link in the address bar, so pasting it is the way through.
+    A bare code is taken as it is, since there is nothing to check it against
+    but the state we asked for.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False
+    if text.startswith("devnull://"):
+        answer = accepts_callback(state, text)
+        return answer if answer not in (IGNORE, CANCELLED) else False
+    return text
+
+
+def release_handler(desktop=None, dry_run=False):
+    """Give `devnull://` back. The scheme is the official app's; we borrow it
+    for one approval. Keeping it would send its links here for good."""
+    desktop = Path(desktop or DESKTOP)
+    desktop.unlink(missing_ok=True)
+    if dry_run:
+        return
+    subprocess.run(["update-desktop-database", str(desktop.parent)], capture_output=True)
+    # xdg-mime cannot unset a default, so the association is dropped by hand.
+    mimeapps = Path.home() / ".config" / "mimeapps.list"
+    try:
+        kept = [line for line in mimeapps.read_text().splitlines()
+                if not line.startswith("x-scheme-handler/devnull=")]
+        mimeapps.write_text("\n".join(kept) + "\n")
+    except OSError:
+        pass
+
+
 def accepts_callback(state, url):
     """The code, or IGNORE / CANCELLED."""
     params = parse_qs(urlparse(url).query)
@@ -123,21 +157,30 @@ def register_handler():
                    capture_output=True)
 
 
-def wait_for_callback(fifo, state, deadline=None):
+def wait_for_callback(fifo, state, deadline=None, allow_paste=True):
     """The code, CANCELLED, or None when nothing came before the deadline.
 
-    Opened non-blocking and waited on with select, so closing the browser ends
-    the setup at the deadline instead of wedging it on a FIFO with no writer.
+    Watches the FIFO the handler writes to and, at the same time, this
+    terminal: a browser that does not hand the link back leaves it in the
+    address bar, and pasting it here is the only way through.
     """
     deadline = deadline or (time.monotonic() + CODE_LIFETIME)
     fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+    watch = [fd] + ([sys.stdin] if allow_paste and sys.stdin.isatty() else [])
     try:
         buffered = ""
         while True:
             left = deadline - time.monotonic()
             if left <= 0:
                 return None
-            if not select.select([fd], [], [], left)[0]:
+            ready = select.select(watch, [], [], left)[0]
+            if not ready:
+                continue
+            if sys.stdin in ready:
+                pasted = accepts_pasted(state, sys.stdin.readline())
+                if pasted:
+                    return pasted
+                print("That is not the link we are waiting for.", file=sys.stderr)
                 continue
             chunk = os.read(fd, 4096).decode(errors="replace")
             if not chunk:
@@ -179,12 +222,16 @@ def main():
     url = authorize_url(KEY, os.uname().nodename or "omarchy", challenge_for(verifier), state)
 
     print("Approve this machine in the browser that just opened.")
+    print("If the browser does not come back here, paste the devnull:// link "
+          "from its address bar and press enter.")
     subprocess.run(["xdg-open", url], capture_output=True)
 
     try:
         code = wait_for_callback(fifo, state)
     finally:
         fifo.unlink(missing_ok=True)
+        # The scheme goes back to whatever owned it, whether this worked or not.
+        release_handler()
 
     if code == CANCELLED:
         print("You cancelled it on the page. Nothing was paired.", file=sys.stderr)
